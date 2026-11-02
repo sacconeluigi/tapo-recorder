@@ -9,8 +9,7 @@ from pathlib import Path
 from flask import Flask, render_template, jsonify, request, send_file, abort
 import imageio_ffmpeg
 
-app = Flask(__name__)
-
+app = Flask(__name__, template_folder=".")
 BASE_DIR = Path(__file__).resolve().parent
 VIDEO_DIR = BASE_DIR / "videos"
 VIDEO_DIR.mkdir(parents=True, exist_ok=True)
