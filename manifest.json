@@ -1,0 +1,17 @@
+{
+  "name": "Tapo Cloud Recorder",
+  "short_name": "Tapo",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#121418",
+  "theme_color": "#2563eb",
+  "description": "Registratore e diretta live per telecamere Tapo",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

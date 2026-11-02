@@ -28,12 +28,14 @@ state_lock = threading.Lock()
 
 def load_settings():
     default = {
-        "host": "79.20.231.70",
-        "ip": "79.20.231.70",
+        "mode": "outside",  # "inside" oppure "outside"
+        "ip_home": "192.168.1.18",
+        "ip_outside": "79.20.231.70",
         "port": "554",
         "username": "luigi1",
         "password": "Luigi2026",
         "quality": "Alta (HD - stream1)",
+        "auto_gdrive": False,
     }
     if SETTINGS_FILE.exists():
         try:
@@ -54,10 +56,27 @@ def save_settings(data):
         return False
 
 
+def get_active_host(settings):
+    mode = settings.get("mode", "outside")
+    if mode == "inside":
+        return settings.get("ip_home", "192.168.1.18").strip()
+    return settings.get("ip_outside", "79.20.231.70").strip()
+
+
 @app.route("/")
 def index():
     settings = load_settings()
     return render_template("index.html", settings=settings)
+
+
+@app.route("/manifest.json")
+def manifest():
+    return send_file(BASE_DIR / "manifest.json", mimetype="application/manifest+json")
+
+
+@app.route("/icon.png")
+def icon():
+    return send_file(BASE_DIR / "icon.png", mimetype="image/png")
 
 
 @app.route("/api/status")
@@ -87,13 +106,7 @@ def handle_settings():
     if request.method == "POST":
         data = request.get_json() or {}
         cur = load_settings()
-        if "ip" in data:
-            cur["host"] = data["ip"]
-            cur["ip"] = data["ip"]
-        if "host" in data:
-            cur["host"] = data["host"]
-            cur["ip"] = data["host"]
-        for k in ["username", "password", "quality", "port"]:
+        for k in ["mode", "ip_home", "ip_outside", "username", "password", "quality", "port", "auto_gdrive"]:
             if k in data:
                 cur[k] = data[k]
         save_settings(cur)
@@ -106,13 +119,7 @@ def start_recording():
     settings = load_settings()
     req_data = request.get_json() or {}
     
-    if "ip" in req_data:
-        settings["host"] = req_data["ip"]
-        settings["ip"] = req_data["ip"]
-    if "host" in req_data:
-        settings["host"] = req_data["host"]
-        settings["ip"] = req_data["host"]
-    for k in ["username", "password", "quality", "port"]:
+    for k in ["mode", "ip_home", "ip_outside", "username", "password", "quality", "port", "auto_gdrive"]:
         if k in req_data:
             settings[k] = req_data[k]
     save_settings(settings)
@@ -121,14 +128,13 @@ def start_recording():
         if recorder_state["is_recording"]:
             return jsonify({"success": False, "error": "Registrazione già attiva."}), 400
 
-        host = settings.get("host") or settings.get("ip") or "79.20.231.70"
-        host = host.strip()
+        host = get_active_host(settings)
         port = settings.get("port", "554").strip()
         user = settings.get("username", "luigi1").strip()
         pwd = settings.get("password", "Luigi2026")
 
         if not host or not user or not pwd:
-            return jsonify({"success": False, "error": "Compila Host/IP, Nome Utente e Password."}), 400
+            return jsonify({"success": False, "error": "Compila Indirizzo IP, Nome Utente e Password."}), 400
 
         stream = "stream1" if "stream1" in settings.get("quality", "") else "stream2"
         safe_user = urllib.parse.quote(user, safe="")
@@ -203,16 +209,15 @@ def stop_recording():
 
 @app.route("/api/live_stream")
 def live_stream():
-    """Genera un flusso video in diretta MJPEG compatibile con iPhone, Android e qualsiasi browser."""
+    """Genera un flusso video in diretta MJPEG compatibile con iPhone, Android e PC."""
     settings = load_settings()
-    host = settings.get("host") or settings.get("ip") or "79.20.231.70"
+    host = get_active_host(settings)
     port = settings.get("port", "554").strip()
     user = settings.get("username", "luigi1").strip()
     pwd = settings.get("password", "Luigi2026")
 
     safe_user = urllib.parse.quote(user, safe="")
     safe_pwd = urllib.parse.quote(pwd, safe="")
-    # stream2 (risoluzione SD) è perfetto per una diretta live fluida senza scatti
     rtsp_url = f"rtsp://{safe_user}:{safe_pwd}@{host}:{port}/stream2"
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
