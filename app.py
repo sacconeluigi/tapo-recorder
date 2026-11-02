@@ -6,7 +6,7 @@ import threading
 import subprocess
 import urllib.parse
 from pathlib import Path
-from flask import Flask, render_template, jsonify, request, send_file, abort
+from flask import Flask, render_template, jsonify, request, send_file, Response, abort
 import imageio_ffmpeg
 
 app = Flask(__name__, template_folder=".")
@@ -57,7 +57,7 @@ def save_settings(data):
 @app.route("/")
 def index():
     settings = load_settings()
-    return render_template("index.html", settings=settings, local_ip="onrender.com")
+    return render_template("index.html", settings=settings)
 
 
 @app.route("/api/status")
@@ -106,7 +106,6 @@ def start_recording():
     settings = load_settings()
     req_data = request.get_json() or {}
     
-    # Aggiorna impostazioni se inviate
     if "ip" in req_data:
         settings["host"] = req_data["ip"]
         settings["ip"] = req_data["ip"]
@@ -200,6 +199,67 @@ def stop_recording():
         "message": "Registrazione salvata con successo!",
         "file": Path(saved_file).name if saved_file else None,
     })
+
+
+@app.route("/api/live_stream")
+def live_stream():
+    """Genera un flusso video in diretta MJPEG compatibile con iPhone, Android e qualsiasi browser."""
+    settings = load_settings()
+    host = settings.get("host") or settings.get("ip") or "79.20.231.70"
+    port = settings.get("port", "554").strip()
+    user = settings.get("username", "luigi1").strip()
+    pwd = settings.get("password", "Luigi2026")
+
+    safe_user = urllib.parse.quote(user, safe="")
+    safe_pwd = urllib.parse.quote(pwd, safe="")
+    # stream2 (risoluzione SD) è perfetto per una diretta live fluida senza scatti
+    rtsp_url = f"rtsp://{safe_user}:{safe_pwd}@{host}:{port}/stream2"
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
+    cmd = [
+        ffmpeg_exe,
+        "-rtsp_transport", "tcp",
+        "-i", rtsp_url,
+        "-f", "image2pipe",
+        "-vf", "scale=640:-1",
+        "-r", "6",
+        "-q:v", "6",
+        "-vcodec", "mjpeg",
+        "-"
+    ]
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            bufsize=10**6
+        )
+    except Exception:
+        abort(500)
+
+    def generate():
+        try:
+            buffer = b""
+            while True:
+                chunk = proc.stdout.read(4096)
+                if not chunk:
+                    break
+                buffer += chunk
+                a = buffer.find(b"\xff\xd8")
+                b = buffer.find(b"\xff\xd9")
+                if a != -1 and b != -1 and b > a:
+                    jpg = buffer[a:b+2]
+                    buffer = buffer[b+2:]
+                    yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n")
+        finally:
+            try:
+                proc.terminate()
+                proc.wait(timeout=1)
+            except Exception:
+                proc.kill()
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.route("/api/videos")
