@@ -10,6 +10,7 @@ from flask import Flask, render_template, jsonify, request, send_file, abort
 import imageio_ffmpeg
 
 app = Flask(__name__, template_folder=".")
+
 BASE_DIR = Path(__file__).resolve().parent
 VIDEO_DIR = BASE_DIR / "videos"
 VIDEO_DIR.mkdir(parents=True, exist_ok=True)
@@ -28,6 +29,7 @@ state_lock = threading.Lock()
 def load_settings():
     default = {
         "host": "79.20.231.70",
+        "ip": "79.20.231.70",
         "port": "554",
         "username": "luigi1",
         "password": "Luigi2026",
@@ -55,7 +57,7 @@ def save_settings(data):
 @app.route("/")
 def index():
     settings = load_settings()
-    return render_template("index.html", settings=settings)
+    return render_template("index.html", settings=settings, local_ip="onrender.com")
 
 
 @app.route("/api/status")
@@ -80,11 +82,38 @@ def get_status():
     })
 
 
+@app.route("/api/settings", methods=["GET", "POST"])
+def handle_settings():
+    if request.method == "POST":
+        data = request.get_json() or {}
+        cur = load_settings()
+        if "ip" in data:
+            cur["host"] = data["ip"]
+            cur["ip"] = data["ip"]
+        if "host" in data:
+            cur["host"] = data["host"]
+            cur["ip"] = data["host"]
+        for k in ["username", "password", "quality", "port"]:
+            if k in data:
+                cur[k] = data[k]
+        save_settings(cur)
+        return jsonify({"success": True, "message": "Impostazioni salvate."})
+    return jsonify(load_settings())
+
+
 @app.route("/api/start", methods=["POST"])
 def start_recording():
     settings = load_settings()
     req_data = request.get_json() or {}
-    for k in ["host", "port", "username", "password", "quality"]:
+    
+    # Aggiorna impostazioni se inviate
+    if "ip" in req_data:
+        settings["host"] = req_data["ip"]
+        settings["ip"] = req_data["ip"]
+    if "host" in req_data:
+        settings["host"] = req_data["host"]
+        settings["ip"] = req_data["host"]
+    for k in ["username", "password", "quality", "port"]:
         if k in req_data:
             settings[k] = req_data[k]
     save_settings(settings)
@@ -93,13 +122,14 @@ def start_recording():
         if recorder_state["is_recording"]:
             return jsonify({"success": False, "error": "Registrazione già attiva."}), 400
 
-        host = settings.get("host", "").strip()
+        host = settings.get("host") or settings.get("ip") or "79.20.231.70"
+        host = host.strip()
         port = settings.get("port", "554").strip()
-        user = settings.get("username", "").strip()
-        pwd = settings.get("password", "")
+        user = settings.get("username", "luigi1").strip()
+        pwd = settings.get("password", "Luigi2026")
 
         if not host or not user or not pwd:
-            return jsonify({"success": False, "error": "Compila Host, Nome Utente e Password."}), 400
+            return jsonify({"success": False, "error": "Compila Host/IP, Nome Utente e Password."}), 400
 
         stream = "stream1" if "stream1" in settings.get("quality", "") else "stream2"
         safe_user = urllib.parse.quote(user, safe="")
