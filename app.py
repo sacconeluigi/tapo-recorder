@@ -39,6 +39,7 @@ def load_settings():
         "audio_mode": "video_audio",  # video_audio, video_only, audio_only
         "split_mode": "1h",          # none, 1h, 2h
         "duration_limit": "0",       # 0 = illimitato, 10800 = 3h, 21600 = 6h, 43200 = 12h
+        "gdrive_url": "",            # URL Webhook Google Drive per salvataggio automatico
     }
     if SETTINGS_FILE.exists():
         try:
@@ -64,6 +65,56 @@ def get_active_host(settings):
     if mode == "inside":
         return settings.get("ip_home", "192.168.1.18").strip()
     return settings.get("ip_outside", "79.20.231.70").strip()
+
+
+def cleanup_disk_space():
+    """Mantiene la cartella videos sotto i 350MB eliminando automaticamente i file più vecchi."""
+    try:
+        files = [f for f in MEDIA_DIR.glob("*.*") if f.is_file() and f.suffix.lower() in [".mp4", ".m4a", ".jpg"]]
+        total_size = sum(f.stat().st_size for f in files)
+        max_bytes = 350 * 1024 * 1024  # 350 MB limite di sicurezza
+        if total_size > max_bytes:
+            files.sort(key=lambda x: x.stat().st_mtime)
+            while total_size > max_bytes and files:
+                oldest = files.pop(0)
+                sz = oldest.stat().st_size
+                oldest.unlink(missing_ok=True)
+                total_size -= sz
+    except Exception as e:
+        print("Errore cleanup:", e)
+
+
+def upload_to_gdrive(file_path):
+    """Carica un file video o audio direttamente su Google Drive via Webhook Apps Script."""
+    settings = load_settings()
+    url = settings.get("gdrive_url", "").strip()
+    if not url:
+        return False
+    try:
+        import base64
+        import urllib.request
+        import urllib.parse
+        p = Path(file_path)
+        if not p.exists():
+            return False
+        with open(p, "rb") as f:
+            content = f.read()
+        b64 = base64.b64encode(content).decode("utf-8")
+        post_data = urllib.parse.urlencode({
+            "filename": p.name,
+            "mimetype": "video/mp4" if p.suffix == ".mp4" else ("audio/mp4" if p.suffix == ".m4a" else "image/jpeg"),
+            "data": b64
+        }).encode("utf-8")
+        req = urllib.request.Request(url, data=post_data, headers={"User-Agent": "TapoCloudRecorder"})
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            res_text = resp.read().decode("utf-8")
+            if "OK" in res_text:
+                # File salvato su Google Drive! Elimina la copia locale per salvare spazio su Render
+                p.unlink(missing_ok=True)
+                return True
+    except Exception as e:
+        print("Errore upload Google Drive:", e)
+    return False
 
 
 @app.route("/")
@@ -111,7 +162,7 @@ def handle_settings():
     if request.method == "POST":
         data = request.get_json() or {}
         cur = load_settings()
-        for k in ["mode", "ip_home", "ip_outside", "username", "password", "quality", "port", "audio_mode", "split_mode", "duration_limit"]:
+        for k in ["mode", "ip_home", "ip_outside", "username", "password", "quality", "port", "audio_mode", "split_mode", "duration_limit", "gdrive_url"]:
             if k in data:
                 cur[k] = data[k]
         save_settings(cur)
@@ -124,9 +175,11 @@ def start_recording():
     settings = load_settings()
     req_data = request.get_json() or {}
     
-    for k in ["mode", "ip_home", "ip_outside", "username", "password", "quality", "port", "audio_mode", "split_mode", "duration_limit"]:
+    for k in ["mode", "ip_home", "ip_outside", "username", "password", "quality", "port", "audio_mode", "split_mode", "duration_limit", "gdrive_url"]:
         if k in req_data:
             settings[k] = req_data[k]
+    save_settings(settings)
+    cleanup_disk_space()
     save_settings(settings)
 
     with state_lock:
@@ -242,6 +295,9 @@ def stop_recording():
             except Exception:
                 p.kill()
 
+    if saved_file:
+        threading.Thread(target=upload_to_gdrive, args=(saved_file,), daemon=True).start()
+
     return jsonify({
         "success": True,
         "message": "Registrazione salvata con successo!",
@@ -324,7 +380,9 @@ def live_stream():
     def generate():
         try:
             buffer = b""
-            while True:
+            frames_sent = 0
+            max_frames = 5 * 60 * 6  # 5 minuti massimo a 6fps per non bloccare connessioni infinite
+            while frames_sent < max_frames:
                 chunk = proc.stdout.read(4096)
                 if not chunk:
                     break
@@ -334,6 +392,7 @@ def live_stream():
                 if a != -1 and b != -1 and b > a:
                     jpg = buffer[a:b+2]
                     buffer = buffer[b+2:]
+                    frames_sent += 1
                     yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n")
         finally:
             try:

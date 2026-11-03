@@ -336,6 +336,12 @@
                 </select>
             </div>
 
+            <div class="col-md-12">
+                <label class="form-label small text-secondary"><i class="fa-brands fa-google-drive text-warning me-1"></i> Collegamento Google Drive Diretto (Opzionale / Webhook)</label>
+                <input type="text" id="cfgGdriveUrl" class="form-control" placeholder="https://script.google.com/macros/s/.../exec" value="{{ settings.gdrive_url }}">
+                <div class="form-text text-secondary small">Inserendo l'indirizzo Webhook Google Apps Script, i video vengono trasferiti automaticamente sul tuo Drive a PC spento liberando memoria all'infinito.</div>
+            </div>
+
             <div class="col-12 text-end">
                 <button class="btn btn-outline-primary btn-sm px-4" onclick="saveSettings(true)">
                     <i class="fa-solid fa-floppy-disk me-1"></i> Salva Impostazioni
@@ -561,7 +567,8 @@
             quality: document.getElementById('cfgQuality').value,
             audio_mode: document.getElementById('cfgAudioMode').value,
             duration_limit: document.getElementById('cfgDurationLimit').value,
-            split_mode: document.getElementById('cfgSplitMode').value
+            split_mode: document.getElementById('cfgSplitMode').value,
+            gdrive_url: document.getElementById('cfgGdriveUrl') ? document.getElementById('cfgGdriveUrl').value.trim() : ''
         };
     }
 
