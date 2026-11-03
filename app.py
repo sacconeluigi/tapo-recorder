@@ -364,8 +364,9 @@ def list_videos():
     return jsonify({"videos": files})
 
 
+@app.route("/api/download/<filename>")
 @app.route("/api/video/<filename>")
-def stream_video(filename):
+def stream_or_download_video(filename):
     file_path = MEDIA_DIR / filename
     if not file_path.exists():
         abort(404)
@@ -374,7 +375,15 @@ def stream_video(filename):
         mimetype = "audio/mp4"
     elif filename.endswith(".jpg"):
         mimetype = "image/jpeg"
-    return send_file(file_path, mimetype=mimetype)
+
+    # Se la richiesta è su /api/download/ o include ?dl=1, forza l'allegato per iOS Safari
+    is_download = request.path.startswith("/api/download") or request.args.get("dl") == "1"
+    return send_file(
+        file_path,
+        mimetype=mimetype,
+        as_attachment=is_download,
+        download_name=filename
+    )
 
 
 @app.route("/api/delete_video/<filename>", methods=["POST"])

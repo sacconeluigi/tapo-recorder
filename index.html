@@ -297,6 +297,17 @@
             <div class="modal-body text-center p-0">
                 <video id="html5Player" controls class="w-100" style="max-height: 500px; background:#000;"></video>
             </div>
+            <div class="modal-footer border-secondary d-flex justify-content-between flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Chiudi</button>
+                <div class="d-flex gap-2">
+                    <button id="modalShareBtn" class="btn btn-primary btn-sm px-3" onclick="shareCurrentVideo()">
+                        <i class="fa-solid fa-arrow-up-from-bracket me-1"></i> Condividi / Salva nel Rullino
+                    </button>
+                    <a id="modalDownloadBtn" href="" class="btn btn-success btn-sm px-3" download>
+                        <i class="fa-solid fa-download me-1"></i> Scarica File
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -498,9 +509,10 @@
                     <td class="fw-bold"><i class="fa-solid ${iconClass} me-2"></i>${v.name}</td>
                     <td class="text-secondary small">${v.date}</td>
                     <td><span class="badge bg-dark border border-secondary">${v.size_mb} MB</span></td>
-                    <td class="text-end">
+                    <td class="text-end text-nowrap">
                         <button class="btn btn-sm btn-outline-info me-1" onclick="playVideo('${v.name}')" title="Guarda o Ascolta"><i class="fa-solid fa-play"></i></button>
-                        <a href="/api/video/${v.name}" download class="btn btn-sm btn-outline-light me-1" title="Scarica"><i class="fa-solid fa-download"></i></a>
+                        <a href="/api/download/${encodeURIComponent(v.name)}" download="${v.name}" class="btn btn-sm btn-outline-success me-1" title="Scarica File"><i class="fa-solid fa-download"></i></a>
+                        <button class="btn btn-sm btn-outline-primary me-1" onclick="shareFile('${v.name}')" title="Condividi o Salva su iPhone"><i class="fa-solid fa-arrow-up-from-bracket"></i></button>
                         <button class="btn btn-sm btn-outline-warning me-1" onclick="saveToDrive('${v.name}')" title="Salva su Google Drive"><i class="fa-brands fa-google-drive"></i></button>
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteVideo('${v.name}')" title="Elimina"><i class="fa-solid fa-trash"></i></button>
                     </td>
@@ -512,17 +524,65 @@
         }
     }
 
+    let currentPlayingFile = '';
+
     function playVideo(filename) {
+        currentPlayingFile = filename;
         const modal = new bootstrap.Modal(document.getElementById('videoModal'));
         const player = document.getElementById('html5Player');
         document.getElementById('videoModalTitle').innerText = filename;
         player.src = '/api/video/' + encodeURIComponent(filename);
+
+        const dlBtn = document.getElementById('modalDownloadBtn');
+        if (dlBtn) {
+            dlBtn.href = '/api/download/' + encodeURIComponent(filename);
+            dlBtn.download = filename;
+        }
+
         modal.show();
         player.play();
         document.getElementById('videoModal').addEventListener('hidden.bs.modal', () => {
             player.pause();
             player.src = '';
         });
+    }
+
+    async function shareFile(filename) {
+        const downloadUrl = window.location.origin + '/api/download/' + encodeURIComponent(filename);
+
+        if (navigator.share) {
+            try {
+                // Su iPhone scarica il file e apre il foglio nativo Apple: Salva video, WhatsApp, AirDrop
+                const res = await fetch('/api/video/' + encodeURIComponent(filename));
+                const blob = await res.blob();
+                const file = new File([blob], filename, { type: blob.type || 'video/mp4' });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        files: [file],
+                        title: filename
+                    });
+                    return;
+                }
+            } catch(e) {
+                console.log('Share file error:', e);
+            }
+            try {
+                await navigator.share({
+                    title: filename,
+                    url: downloadUrl
+                });
+                return;
+            } catch(e) {}
+        }
+
+        // Fallback: download diretto per qualsiasi browser
+        window.location.href = downloadUrl;
+    }
+
+    function shareCurrentVideo() {
+        if (currentPlayingFile) {
+            shareFile(currentPlayingFile);
+        }
     }
 
     function saveToDrive(filename) {
