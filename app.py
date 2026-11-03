@@ -295,14 +295,30 @@ def stop_recording():
             except Exception:
                 p.kill()
 
-    if saved_file:
-        threading.Thread(target=upload_to_gdrive, args=(saved_file,), daemon=True).start()
+    def auto_upload_latest():
+        time.sleep(1)
+        for f in sorted(MEDIA_DIR.glob("*.*"), key=lambda x: x.stat().st_mtime, reverse=True)[:3]:
+            if f.is_file() and f.suffix.lower() in [".mp4", ".m4a", ".jpg"]:
+                upload_to_gdrive(f)
+
+    threading.Thread(target=auto_upload_latest, daemon=True).start()
 
     return jsonify({
         "success": True,
         "message": "Registrazione salvata con successo!",
         "file": Path(saved_file).name if saved_file else None,
     })
+
+
+@app.route("/api/upload_drive/<filename>", methods=["POST"])
+def api_upload_drive(filename):
+    file_path = MEDIA_DIR / filename
+    if not file_path.exists():
+        return jsonify({"success": False, "error": "File non trovato sul server."}), 404
+    ok = upload_to_gdrive(file_path)
+    if ok:
+        return jsonify({"success": True, "message": f"File {filename} caricato con successo nel tuo Google Drive!"})
+    return jsonify({"success": False, "error": "Impossibile caricare su Google Drive. Verifica il link nelle impostazioni."}), 500
 
 
 @app.route("/api/snapshot")

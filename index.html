@@ -709,8 +709,30 @@
         }
     }
 
-    function saveToDrive(filename) {
-        // Avvia il download diretto del file
+    async function saveToDrive(filename) {
+        const webhookUrl = document.getElementById('cfgGdriveUrl') ? document.getElementById('cfgGdriveUrl').value.trim() : '';
+        if (webhookUrl) {
+            const btn = event ? event.currentTarget : null;
+            const oldHtml = btn ? btn.innerHTML : '';
+            if (btn) { btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; btn.disabled = true; }
+            try {
+                const res = await fetch('/api/upload_drive/' + encodeURIComponent(filename), { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                    loadVideos();
+                    return;
+                } else {
+                    alert('Avviso: ' + data.error);
+                }
+            } catch(e) {
+                console.error(e);
+            } finally {
+                if (btn) { btn.innerHTML = oldHtml; btn.disabled = false; }
+            }
+        }
+
+        // Metodo alternativo: scarica e apre Google Drive
         const a = document.createElement('a');
         a.href = '/api/download/' + encodeURIComponent(filename);
         a.download = filename;
@@ -718,12 +740,11 @@
         a.click();
         document.body.removeChild(a);
 
-        // Apre Google Drive per caricare il file scaricato con 15 GB gratis
         setTimeout(() => {
             window.open('https://drive.google.com/drive/u/0/my-drive', '_blank');
         }, 500);
 
-        alert('1. Il file ' + filename + ' è stato scaricato sul tuo dispositivo!\\n2. Ora trascinalo nella schermata di Google Drive che si è aperta per conservarlo nei tuoi 15 GB gratis!');
+        alert('1. Il file ' + filename + ' è stato scaricato sul tuo dispositivo!\\n2. Trascinalo nella pagina di Google Drive per conservarlo nei tuoi 15 GB gratis!');
     }
 
     async function deleteVideo(filename) {
