@@ -9,7 +9,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Tapo">
+    <meta name="apple-mobile-web-app-title" content="Tapo Recorder">
     <link rel="apple-touch-icon" href="/icon.png">
     <link rel="icon" type="image/png" href="/icon.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -19,11 +19,12 @@
             background-color: #121418;
             color: #e4e7eb;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
         .card {
             background-color: #1c2128;
             border: 1px solid #2d333b;
-            border-radius: 12px;
+            border-radius: 14px;
         }
         .form-control, .form-select {
             background-color: #242930;
@@ -47,7 +48,7 @@
         }
         .btn-action {
             height: 52px;
-            font-size: 1.1rem;
+            font-size: 1.05rem;
             font-weight: 600;
             border-radius: 10px;
         }
@@ -60,17 +61,20 @@
         .live-wrapper {
             position: relative;
             background: #000;
-            border-radius: 8px;
+            border-radius: 10px;
             overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .fullscreen-btn {
             position: absolute;
             top: 10px;
             right: 10px;
-            background: rgba(0,0,0,0.6);
+            background: rgba(0,0,0,0.65);
             color: #fff;
             border: 1px solid rgba(255,255,255,0.4);
-            border-radius: 6px;
+            border-radius: 8px;
             padding: 6px 12px;
             font-size: 0.9rem;
             cursor: pointer;
@@ -78,6 +82,30 @@
         }
         .fullscreen-btn:hover {
             background: rgba(0,0,0,0.9);
+        }
+        /* Fullscreen universale compatibile con qualsiasi smartphone */
+        .live-fullscreen-mobile {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
+            z-index: 999999 !important;
+            background: #000 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            align-items: center !important;
+            border-radius: 0 !important;
+        }
+        .live-fullscreen-mobile img {
+            max-height: 100vh !important;
+            width: 100vw !important;
+            object-fit: contain !important;
+        }
+        .cursor-pointer {
+            cursor: pointer;
         }
     </style>
 </head>
@@ -88,31 +116,36 @@
     <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom border-secondary">
         <div>
             <h2 class="fw-bold mb-1"><i class="fa-solid fa-cloud text-primary me-2"></i>Tapo Cloud Recorder</h2>
-            <p class="text-secondary small mb-0">Diretta live e registrazione su smartphone a PC spento</p>
+            <p class="text-secondary small mb-0">Diretta live, foto e registrazione continua a PC spento (0 €)</p>
         </div>
         <div class="text-end">
             <span class="badge bg-success p-2"><i class="fa-solid fa-signal me-1"></i> Cloud Attivo</span>
         </div>
     </div>
 
-    <!-- Scheda Diretta Live Video con Schermo Intero -->
+    <!-- Scheda Diretta Live Video con Schermo Intero & Scatta Foto -->
     <div class="card p-3 mb-4 shadow">
-        <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
             <h5 class="fw-bold mb-0"><i class="fa-solid fa-eye text-info me-2"></i>Diretta Live Telecamera</h5>
-            <button id="btnToggleLive" class="btn btn-outline-info btn-sm px-3" onclick="toggleLive()">
-                <i class="fa-solid fa-play me-1"></i> Mostra Diretta
-            </button>
+            <div class="d-flex gap-2">
+                <button id="btnSnapshot" class="btn btn-outline-warning btn-sm px-3" onclick="takeSnapshot()">
+                    <i class="fa-solid fa-camera me-1"></i> Scatta Foto
+                </button>
+                <button id="btnToggleLive" class="btn btn-outline-info btn-sm px-3" onclick="toggleLive()">
+                    <i class="fa-solid fa-play me-1"></i> Mostra Diretta
+                </button>
+            </div>
         </div>
         <div id="liveContainer" style="display:none; text-align:center;" class="mt-2">
             <div class="live-wrapper" id="livePlayerBox">
-                <button class="fullscreen-btn" onclick="openFullscreen()" title="Schermo Intero">
+                <button class="fullscreen-btn" onclick="toggleFullscreen()" title="Schermo Intero">
                     <i class="fa-solid fa-expand me-1"></i> Tutto Schermo
                 </button>
                 <img id="liveImg" src="" class="img-fluid" style="max-height: 480px; width: 100%; object-fit: contain;" alt="Diretta Live Tapo" />
             </div>
             <div class="d-flex justify-content-between align-items-center text-secondary small mt-2 px-1">
                 <span><i class="fa-solid fa-circle text-danger me-1"></i> Streaming in tempo reale</span>
-                <span class="text-info cursor-pointer" onclick="openFullscreen()"><i class="fa-solid fa-expand me-1"></i> Tocca per ingrandire a tutto schermo</span>
+                <span class="text-info cursor-pointer" onclick="toggleFullscreen()"><i class="fa-solid fa-expand me-1"></i> Tocca per tutto schermo</span>
             </div>
         </div>
     </div>
@@ -128,7 +161,7 @@
 
         <div class="row align-items-center my-3 text-center">
             <div class="col-6 border-end border-secondary">
-                <div class="text-secondary small text-uppercase">Tempo di Registrazione</div>
+                <div class="text-secondary small text-uppercase">Tempo Registrazione</div>
                 <div id="timerText" class="display-6 fw-bold text-success font-monospace">00:00:00</div>
             </div>
             <div class="col-6">
@@ -137,7 +170,36 @@
             </div>
         </div>
 
-        <div class="d-flex gap-3 mt-3">
+        <!-- Selettori Rapidi Registrazione (>3 ore, Audio, Split) -->
+        <div class="row g-2 mb-3 pt-2 border-top border-secondary">
+            <div class="col-md-4">
+                <label class="form-label small text-secondary mb-1"><i class="fa-solid fa-microphone text-info me-1"></i> Modalità</label>
+                <select id="cfgAudioMode" class="form-select form-select-sm" onchange="saveSettings(false)">
+                    <option value="video_audio" {% if settings.audio_mode == 'video_audio' %}selected{% endif %}>🎥 Video HD + Audio</option>
+                    <option value="audio_only" {% if settings.audio_mode == 'audio_only' %}selected{% endif %}>🎙️ Solo Audio (0 spazio / 12+ ore)</option>
+                    <option value="video_only" {% if settings.audio_mode == 'video_only' %}selected{% endif %}>🔇 Solo Video (Muto)</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-secondary mb-1"><i class="fa-solid fa-clock text-warning me-1"></i> Durata Limite</label>
+                <select id="cfgDurationLimit" class="form-select form-select-sm" onchange="saveSettings(false)">
+                    <option value="0" {% if settings.duration_limit == '0' %}selected{% endif %}>♾️ Continua (Senza limiti)</option>
+                    <option value="10800" {% if settings.duration_limit == '10800' %}selected{% endif %}>⏱️ 3 Ore</option>
+                    <option value="21600" {% if settings.duration_limit == '21600' %}selected{% endif %}>⏱️ 6 Ore</option>
+                    <option value="43200" {% if settings.duration_limit == '43200' %}selected{% endif %}>⏱️ 12 Ore</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-secondary mb-1"><i class="fa-solid fa-scissors text-primary me-1"></i> Spezzetta File</label>
+                <select id="cfgSplitMode" class="form-select form-select-sm" onchange="saveSettings(false)">
+                    <option value="1h" {% if settings.split_mode == '1h' %}selected{% endif %}>✂️ Ogni 1 Ora (Consigliato)</option>
+                    <option value="2h" {% if settings.split_mode == '2h' %}selected{% endif %}>✂️ Ogni 2 Ore</option>
+                    <option value="none" {% if settings.split_mode == 'none' %}selected{% endif %}>📦 File Unico</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="d-flex gap-3 mt-2">
             <button id="btnStart" class="btn btn-success btn-action flex-grow-1" onclick="startRecording()">
                 <i class="fa-solid fa-play me-2"></i>AVVIA REGISTRAZIONE
             </button>
@@ -162,7 +224,7 @@
         
         <div class="row g-3">
             <div class="col-md-6">
-                <label class="form-label small text-secondary">IP Fuori Casa (Internet / Pubblico)</label>
+                <label class="form-label small text-secondary">IP Fuori Casa (Pubblico / Modem)</label>
                 <input type="text" id="cfgIpOutside" class="form-control" value="{{ settings.ip_outside }}">
             </div>
             <div class="col-md-6">
@@ -183,7 +245,7 @@
                 <label class="form-label small text-secondary">Qualità Video</label>
                 <select id="cfgQuality" class="form-select">
                     <option value="Alta (HD - stream1)" {% if "stream1" in settings.quality %}selected{% endif %}>Alta Definizione (HD 1080p - stream1)</option>
-                    <option value="Standard (SD - stream2)" {% if "stream2" in settings.quality %}selected{% endif %}>Standard (SD - stream2)</option>
+                    <option value="Standard (SD - stream2)" {% if "stream2" in settings.quality %}selected{% endif %}>Standard (SD 360p - stream2)</option>
                 </select>
             </div>
 
@@ -195,12 +257,12 @@
         </div>
     </div>
 
-    <!-- Scheda Video Registrati & Google Drive -->
+    <!-- Scheda File Salvati & Google Drive -->
     <div class="card p-4 shadow">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
-                <h5 class="fw-bold mb-0"><i class="fa-solid fa-film text-danger me-2"></i>Galleria Video</h5>
-                <span class="text-secondary small">I video possono essere guardati, scaricati o inviati a Google Drive</span>
+                <h5 class="fw-bold mb-0"><i class="fa-solid fa-folder-open text-warning me-2"></i>File Salvati & Galleria</h5>
+                <span class="text-secondary small">I video e audio possono essere guardati, scaricati o salvati su Google Drive (15 GB gratis)</span>
             </div>
             <button class="btn btn-sm btn-outline-secondary" onclick="loadVideos()"><i class="fa-solid fa-rotate-right me-1"></i> Aggiorna</button>
         </div>
@@ -209,14 +271,14 @@
             <table class="table align-middle table-dark table-hover mb-0">
                 <thead>
                     <tr class="text-secondary small">
-                        <th>Nome File</th>
+                        <th>Tipo / Nome File</th>
                         <th>Data e Ora</th>
                         <th>Dimensione</th>
                         <th class="text-end">Azioni</th>
                     </tr>
                 </thead>
                 <tbody id="videoTableBody">
-                    <tr><td colspan="4" class="text-center text-secondary py-3">Caricamento video...</td></tr>
+                    <tr><td colspan="4" class="text-center text-secondary py-3">Caricamento file...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -224,12 +286,12 @@
 
 </div>
 
-<!-- Modal Riproduzione Video -->
+<!-- Modal Riproduzione Video / Audio -->
 <div class="modal fade" id="videoModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content bg-dark border-secondary text-white">
             <div class="modal-header border-secondary">
-                <h5 class="modal-title" id="videoModalTitle">Riproduzione Video</h5>
+                <h5 class="modal-title" id="videoModalTitle">Riproduzione</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body text-center p-0">
@@ -242,6 +304,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     let isLiveActive = false;
+    let previousRecordingState = false;
 
     function toggleLive() {
         const container = document.getElementById('liveContainer');
@@ -260,19 +323,56 @@
             img.src = '';
             btn.className = 'btn btn-outline-info btn-sm px-3';
             btn.innerHTML = '<i class="fa-solid fa-play me-1"></i> Mostra Diretta';
+            closeFullscreen();
         }
     }
 
-    function openFullscreen() {
+    function toggleFullscreen() {
         const elem = document.getElementById('livePlayerBox');
         if (!elem) return;
-        if (elem.requestFullscreen) {
-            elem.requestFullscreen();
-        } else if (elem.webkitRequestFullscreen) { /* Safari iOS / macOS */
-            elem.webkitRequestFullscreen();
-        } else if (elem.msRequestFullscreen) {
-            elem.msRequestFullscreen();
+        if (document.fullscreenElement || elem.classList.contains('live-fullscreen-mobile')) {
+            closeFullscreen();
+            return;
         }
+        if (elem.requestFullscreen) {
+            elem.requestFullscreen().catch(() => {
+                elem.classList.add('live-fullscreen-mobile');
+            });
+        } else if (elem.webkitRequestFullscreen) {
+            elem.webkitRequestFullscreen();
+        } else {
+            elem.classList.add('live-fullscreen-mobile');
+        }
+    }
+
+    function closeFullscreen() {
+        const elem = document.getElementById('livePlayerBox');
+        if (document.exitFullscreen) {
+            document.exitFullscreen().catch(() => {});
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        }
+        if (elem) elem.classList.remove('live-fullscreen-mobile');
+    }
+
+    function takeSnapshot() {
+        const btn = document.getElementById('btnSnapshot');
+        const oldHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Scatto...';
+        btn.disabled = true;
+
+        const a = document.createElement('a');
+        a.href = '/api/snapshot?t=' + Date.now();
+        a.download = 'Foto_Tapo_' + Date.now() + '.jpg';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        setTimeout(() => {
+            btn.innerHTML = oldHtml;
+            btn.disabled = false;
+            loadVideos();
+        }, 3000);
     }
 
     function onModeChange() {
@@ -283,27 +383,38 @@
         try {
             const res = await fetch('/api/status');
             const data = await res.json();
-            
+
+            // Sincronizzazione automatica multi-dispositivo:
+            // Se la registrazione viene fermata da qualsiasi telefono, aggiorna subito la lista su tutti i telefoni!
+            if (previousRecordingState && !data.is_recording) {
+                loadVideos();
+            }
+            previousRecordingState = data.is_recording;
+
             const badge = document.getElementById('badgeStatus');
-            const btnStart = document.getElementById('btnStart');
-            const btnStop = document.getElementById('btnStop');
             const timer = document.getElementById('timerText');
             const curFile = document.getElementById('currentFileText');
+            const btnStart = document.getElementById('btnStart');
+            const btnStop = document.getElementById('btnStop');
+
+            timer.innerText = data.timer_formatted || "00:00:00";
+            curFile.innerText = data.current_file || "Nessuno";
 
             if (data.is_recording) {
+                badge.innerText = '🔴 REGISTRAZIONE IN CORSO';
                 badge.className = 'badge badge-live px-3 py-2 fs-6';
-                badge.innerHTML = '🔴 REGISTRAZIONE IN CORSO';
                 btnStart.disabled = true;
                 btnStop.disabled = false;
-                timer.innerText = data.timer_formatted;
-                curFile.innerText = data.current_file || 'Inizializzazione...';
             } else {
+                badge.innerText = '⚪ In attesa';
                 badge.className = 'badge bg-secondary px-3 py-2 fs-6';
-                badge.innerHTML = '⚪ In attesa';
                 btnStart.disabled = false;
                 btnStop.disabled = true;
-                timer.innerText = '00:00:00';
-                curFile.innerText = 'Nessuno';
+            }
+
+            if (data.last_error) {
+                curFile.innerText = 'Errore: ' + data.last_error;
+                curFile.className = 'fs-6 text-danger px-2';
             }
         } catch(e) {
             console.error(e);
@@ -318,7 +429,10 @@
             ip_home: document.getElementById('cfgIpHome').value.trim(),
             username: document.getElementById('cfgUser').value.trim(),
             password: document.getElementById('cfgPass').value,
-            quality: document.getElementById('cfgQuality').value
+            quality: document.getElementById('cfgQuality').value,
+            audio_mode: document.getElementById('cfgAudioMode').value,
+            duration_limit: document.getElementById('cfgDurationLimit').value,
+            split_mode: document.getElementById('cfgSplitMode').value
         };
     }
 
@@ -370,18 +484,22 @@
             tbody.innerHTML = '';
 
             if (data.videos.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary py-3">Nessun video registrato presente.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary py-3">Nessun file presente.</td></tr>';
                 return;
             }
 
             data.videos.forEach(v => {
+                let iconClass = 'fa-file-video text-primary';
+                if (v.type === 'audio') iconClass = 'fa-file-audio text-warning';
+                if (v.type === 'photo') iconClass = 'fa-file-image text-info';
+
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td class="fw-bold"><i class="fa-solid fa-file-video text-primary me-2"></i>${v.name}</td>
+                    <td class="fw-bold"><i class="fa-solid ${iconClass} me-2"></i>${v.name}</td>
                     <td class="text-secondary small">${v.date}</td>
                     <td><span class="badge bg-dark border border-secondary">${v.size_mb} MB</span></td>
                     <td class="text-end">
-                        <button class="btn btn-sm btn-outline-info me-1" onclick="playVideo('${v.name}')" title="Guarda nel browser"><i class="fa-solid fa-play"></i></button>
+                        <button class="btn btn-sm btn-outline-info me-1" onclick="playVideo('${v.name}')" title="Guarda o Ascolta"><i class="fa-solid fa-play"></i></button>
                         <a href="/api/video/${v.name}" download class="btn btn-sm btn-outline-light me-1" title="Scarica"><i class="fa-solid fa-download"></i></a>
                         <button class="btn btn-sm btn-outline-warning me-1" onclick="saveToDrive('${v.name}')" title="Salva su Google Drive"><i class="fa-brands fa-google-drive"></i></button>
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteVideo('${v.name}')" title="Elimina"><i class="fa-solid fa-trash"></i></button>
@@ -408,10 +526,20 @@
     }
 
     function saveToDrive(filename) {
-        const fileUrl = window.location.origin + '/api/video/' + encodeURIComponent(filename);
-        // Su mobile apre la condivisione diretta o Google Drive
-        window.open('https://drive.google.com/drive/my-drive', '_blank');
-        alert('Per caricare ' + filename + ' su Google Drive:\n\n1. Scarica il file con il pulsante freccia ⬇️\n2. Aprilo in Google Drive con un clic!');
+        // Avvia il download diretto del file
+        const a = document.createElement('a');
+        a.href = '/api/video/' + encodeURIComponent(filename);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        // Apre Google Drive per caricare il file scaricato con 15 GB gratis
+        setTimeout(() => {
+            window.open('https://drive.google.com/drive/u/0/my-drive', '_blank');
+        }, 500);
+
+        alert('1. Il file ' + filename + ' è stato scaricato sul tuo dispositivo!\\n2. Ora trascinalo nella schermata di Google Drive che si è aperta per conservarlo nei tuoi 15 GB gratis!');
     }
 
     async function deleteVideo(filename) {
@@ -427,7 +555,8 @@
 
     updateStatus();
     loadVideos();
-    setInterval(updateStatus, 1000);
+    setInterval(updateStatus, 1000); // Polling stato ogni secondo
+    setInterval(loadVideos, 5000);   // Sincronizzazione automatica galleria ogni 5 secondi tra tutti i dispositivi
 </script>
 </body>
 </html>

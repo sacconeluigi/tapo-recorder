@@ -12,14 +12,15 @@ import imageio_ffmpeg
 app = Flask(__name__, template_folder=".")
 
 BASE_DIR = Path(__file__).resolve().parent
-VIDEO_DIR = BASE_DIR / "videos"
-VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+MEDIA_DIR = BASE_DIR / "videos"
+MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 SETTINGS_FILE = BASE_DIR / "settings.json"
 
 recorder_state = {
     "is_recording": False,
     "start_time": None,
     "current_file": None,
+    "rec_type": "video_audio",
     "process": None,
     "last_error": None,
 }
@@ -28,14 +29,16 @@ state_lock = threading.Lock()
 
 def load_settings():
     default = {
-        "mode": "outside",  # "inside" oppure "outside"
+        "mode": "outside",
         "ip_home": "192.168.1.18",
         "ip_outside": "79.20.231.70",
         "port": "554",
         "username": "luigi1",
         "password": "Luigi2026",
         "quality": "Alta (HD - stream1)",
-        "auto_gdrive": False,
+        "audio_mode": "video_audio",  # video_audio, video_only, audio_only
+        "split_mode": "1h",          # none, 1h, 2h
+        "duration_limit": "0",       # 0 = illimitato, 10800 = 3h, 21600 = 6h, 43200 = 12h
     }
     if SETTINGS_FILE.exists():
         try:
@@ -86,6 +89,7 @@ def get_status():
         start_t = recorder_state["start_time"]
         elapsed = int(time.time() - start_t) if is_rec and start_t else 0
         cur_file = recorder_state["current_file"]
+        rec_type = recorder_state["rec_type"]
         last_err = recorder_state["last_error"]
 
     mins, secs = divmod(elapsed, 60)
@@ -97,6 +101,7 @@ def get_status():
         "elapsed_seconds": elapsed,
         "timer_formatted": timer_str,
         "current_file": Path(cur_file).name if cur_file else None,
+        "rec_type": rec_type,
         "last_error": last_err,
     })
 
@@ -106,11 +111,11 @@ def handle_settings():
     if request.method == "POST":
         data = request.get_json() or {}
         cur = load_settings()
-        for k in ["mode", "ip_home", "ip_outside", "username", "password", "quality", "port", "auto_gdrive"]:
+        for k in ["mode", "ip_home", "ip_outside", "username", "password", "quality", "port", "audio_mode", "split_mode", "duration_limit"]:
             if k in data:
                 cur[k] = data[k]
         save_settings(cur)
-        return jsonify({"success": True, "message": "Impostazioni salvate."})
+        return jsonify({"success": True, "message": "Impostazioni salvate con successo."})
     return jsonify(load_settings())
 
 
@@ -119,7 +124,7 @@ def start_recording():
     settings = load_settings()
     req_data = request.get_json() or {}
     
-    for k in ["mode", "ip_home", "ip_outside", "username", "password", "quality", "port", "auto_gdrive"]:
+    for k in ["mode", "ip_home", "ip_outside", "username", "password", "quality", "port", "audio_mode", "split_mode", "duration_limit"]:
         if k in req_data:
             settings[k] = req_data[k]
     save_settings(settings)
@@ -142,23 +147,50 @@ def start_recording():
         rtsp_url = f"rtsp://{safe_user}:{safe_pwd}@{host}:{port}/{stream}"
 
         timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-        output_file = VIDEO_DIR / f"Tapo_{timestamp}.mp4"
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
-        cmd = [
-            ffmpeg_exe,
-            "-rtsp_transport",
-            "tcp",
-            "-i",
-            rtsp_url,
-            "-c:v",
-            "copy",
-            "-c:a",
-            "aac",
-            "-movflags",
-            "+faststart",
-            str(output_file),
-        ]
+        audio_mode = settings.get("audio_mode", "video_audio")
+        split_mode = settings.get("split_mode", "1h")
+        dur_limit = int(settings.get("duration_limit", "0") or "0")
+
+        # Base comando ffmpeg
+        cmd = [ffmpeg_exe, "-rtsp_transport", "tcp", "-i", rtsp_url]
+
+        # Limite durata programmata (se > 0)
+        if dur_limit > 0:
+            cmd.extend(["-t", str(dur_limit)])
+
+        if audio_mode == "audio_only":
+            # Modalità Solo Audio (MP3/AAC ultra-leggero, ~25MB/ora)
+            ext = "m4a"
+            output_pattern = str(MEDIA_DIR / f"Tapo_Audio_{timestamp}.{ext}")
+            cmd.extend(["-vn", "-c:a", "aac", output_pattern])
+        elif split_mode in ["1h", "2h"]:
+            # Modalità continua a spezzoni per lunghe registrazioni (> 3 ore senza blocchi)
+            seg_time = 3600 if split_mode == "1h" else 7200
+            output_pattern = str(MEDIA_DIR / "Tapo_%Y-%m-%d_%H-%M-%S.mp4")
+            
+            if audio_mode == "video_only":
+                cmd.extend(["-an", "-c:v", "copy"])
+            else:
+                cmd.extend(["-c:v", "copy", "-c:a", "aac"])
+
+            cmd.extend([
+                "-movflags", "+faststart",
+                "-f", "segment",
+                "-segment_time", str(seg_time),
+                "-reset_timestamps", "1",
+                "-strftime", "1",
+                output_pattern,
+            ])
+        else:
+            # File unico continuo
+            output_pattern = str(MEDIA_DIR / f"Tapo_{timestamp}.mp4")
+            if audio_mode == "video_only":
+                cmd.extend(["-an", "-c:v", "copy"])
+            else:
+                cmd.extend(["-c:v", "copy", "-c:a", "aac"])
+            cmd.extend(["-movflags", "+faststart", output_pattern])
 
         try:
             p = subprocess.Popen(
@@ -169,13 +201,23 @@ def start_recording():
             )
             recorder_state["is_recording"] = True
             recorder_state["start_time"] = time.time()
-            recorder_state["current_file"] = str(output_file)
+            recorder_state["current_file"] = output_pattern
+            recorder_state["rec_type"] = audio_mode
             recorder_state["process"] = p
             recorder_state["last_error"] = None
         except Exception as e:
             return jsonify({"success": False, "error": f"Errore avvio: {str(e)}"}), 500
 
-    return jsonify({"success": True, "message": "Registrazione avviata!", "file": output_file.name})
+    desc_map = {
+        "video_audio": "Video Full HD + Audio microfono",
+        "video_only": "Solo Video (Muto)",
+        "audio_only": "Solo Audio (Registratore vocale)",
+    }
+    return jsonify({
+        "success": True,
+        "message": f"Registrazione avviata in modalità: {desc_map.get(audio_mode, audio_mode)}!",
+        "file": Path(output_pattern).name,
+    })
 
 
 @app.route("/api/stop", methods=["POST"])
@@ -205,6 +247,42 @@ def stop_recording():
         "message": "Registrazione salvata con successo!",
         "file": Path(saved_file).name if saved_file else None,
     })
+
+
+@app.route("/api/snapshot")
+def take_snapshot():
+    """Scatta una foto istantanea JPEG ad alta risoluzione dalla telecamera."""
+    settings = load_settings()
+    host = get_active_host(settings)
+    port = settings.get("port", "554").strip()
+    user = settings.get("username", "luigi1").strip()
+    pwd = settings.get("password", "Luigi2026")
+
+    safe_user = urllib.parse.quote(user, safe="")
+    safe_pwd = urllib.parse.quote(pwd, safe="")
+    rtsp_url = f"rtsp://{safe_user}:{safe_pwd}@{host}:{port}/stream1"
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    snap_path = MEDIA_DIR / f"Foto_Tapo_{timestamp}.jpg"
+
+    cmd = [
+        ffmpeg_exe,
+        "-rtsp_transport", "tcp",
+        "-i", rtsp_url,
+        "-frames:v", "1",
+        "-q:v", "2",
+        "-y",
+        str(snap_path)
+    ]
+
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=8)
+        if snap_path.exists():
+            return send_file(snap_path, mimetype="image/jpeg", as_attachment=True, download_name=snap_path.name)
+        return jsonify({"error": "Impossibile scattare foto"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/live_stream")
@@ -269,33 +347,39 @@ def live_stream():
 
 @app.route("/api/videos")
 def list_videos():
-    videos = []
-    for f in VIDEO_DIR.glob("*.mp4"):
-        if f.is_file():
+    files = []
+    for f in MEDIA_DIR.glob("*.*"):
+        if f.is_file() and f.suffix.lower() in [".mp4", ".m4a", ".jpg"]:
             stat = f.stat()
             size_mb = round(stat.st_size / (1024 * 1024), 2)
             mtime_str = time.strftime("%d/%m/%Y %H:%M:%S", time.localtime(stat.st_mtime))
-            videos.append({
+            files.append({
                 "name": f.name,
                 "size_mb": size_mb,
                 "date": mtime_str,
                 "mtime": stat.st_mtime,
+                "type": "audio" if f.suffix == ".m4a" else ("photo" if f.suffix == ".jpg" else "video"),
             })
-    videos.sort(key=lambda x: x["mtime"], reverse=True)
-    return jsonify({"videos": videos})
+    files.sort(key=lambda x: x["mtime"], reverse=True)
+    return jsonify({"videos": files})
 
 
 @app.route("/api/video/<filename>")
 def stream_video(filename):
-    file_path = VIDEO_DIR / filename
+    file_path = MEDIA_DIR / filename
     if not file_path.exists():
         abort(404)
-    return send_file(file_path, mimetype="video/mp4")
+    mimetype = "video/mp4"
+    if filename.endswith(".m4a"):
+        mimetype = "audio/mp4"
+    elif filename.endswith(".jpg"):
+        mimetype = "image/jpeg"
+    return send_file(file_path, mimetype=mimetype)
 
 
 @app.route("/api/delete_video/<filename>", methods=["POST"])
 def delete_video(filename):
-    file_path = VIDEO_DIR / filename
+    file_path = MEDIA_DIR / filename
     if file_path.exists():
         try:
             file_path.unlink()
