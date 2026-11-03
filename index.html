@@ -357,7 +357,12 @@
                 <h5 class="fw-bold mb-0"><i class="fa-solid fa-folder-open text-warning me-2"></i>File Salvati & Galleria</h5>
                 <span class="text-secondary small">Sincronizzata su tutti i dispositivi in tempo reale</span>
             </div>
-            <button class="btn btn-sm btn-outline-secondary" onclick="loadVideos()"><i class="fa-solid fa-rotate-right me-1"></i> Aggiorna</button>
+            <div class="d-flex gap-2">
+                <a href="https://drive.google.com/drive/u/0/my-drive" target="_blank" class="btn btn-sm btn-outline-warning">
+                    <i class="fa-brands fa-google-drive me-1"></i> Archivio Drive (15 GB)
+                </a>
+                <button class="btn btn-sm btn-outline-secondary" onclick="loadVideos()"><i class="fa-solid fa-rotate-right me-1"></i> Aggiorna</button>
+            </div>
         </div>
 
         <div class="table-responsive">
@@ -525,7 +530,7 @@
             const timerFormatted = data.timer_formatted || "00:00:00";
             timer.innerText = timerFormatted;
             overlayTimer.innerText = timerFormatted;
-            curFile.innerText = data.current_file || "Nessuno";
+            curFile.innerText = (data.is_recording && data.current_file) ? data.current_file : "Nessuno";
 
             if (data.is_recording) {
                 badge.innerText = '🔴 IN REGISTRAZIONE';

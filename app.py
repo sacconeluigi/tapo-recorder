@@ -109,8 +109,9 @@ def upload_to_gdrive(file_path):
         with urllib.request.urlopen(req, timeout=90) as resp:
             res_text = resp.read().decode("utf-8")
             if "OK" in res_text:
-                # File salvato su Google Drive! Elimina la copia locale per salvare spazio su Render
-                p.unlink(missing_ok=True)
+                # File caricato con successo su Google Drive!
+                # Lo manteniamo visibile nella galleria dell'app (la pulizia automatica interverrà solo oltre i 350MB)
+                cleanup_disk_space()
                 return True
     except Exception as e:
         print("Errore upload Google Drive:", e)
@@ -151,7 +152,7 @@ def get_status():
         "is_recording": is_rec,
         "elapsed_seconds": elapsed,
         "timer_formatted": timer_str,
-        "current_file": Path(cur_file).name if cur_file else None,
+        "current_file": Path(cur_file).name if (is_rec and cur_file) else None,
         "rec_type": rec_type,
         "last_error": last_err,
     })
@@ -284,6 +285,8 @@ def stop_recording():
         p = recorder_state["process"]
         saved_file = recorder_state["current_file"]
         recorder_state["is_recording"] = False
+        recorder_state["current_file"] = None
+        recorder_state["start_time"] = None
         recorder_state["process"] = None
 
         try:
