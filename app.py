@@ -37,7 +37,7 @@ def load_settings():
         "password": "Luigi2026",
         "quality": "Alta (HD - stream1)",
         "audio_mode": "video_audio",  # video_audio, video_only, audio_only
-        "split_mode": "1h",          # none, 1h, 2h
+        "split_mode": "30m",          # none, 15m, 30m, 1h, 2h
         "duration_limit": "0",       # 0 = illimitato, 10800 = 3h, 21600 = 6h, 43200 = 12h
         "gdrive_url": "",            # URL Webhook Google Drive per salvataggio automatico
     }
@@ -109,13 +109,155 @@ def upload_to_gdrive(file_path):
         with urllib.request.urlopen(req, timeout=90) as resp:
             res_text = resp.read().decode("utf-8")
             if "OK" in res_text:
-                # File caricato con successo su Google Drive!
-                # Lo manteniamo visibile nella galleria dell'app (la pulizia automatica interverrà solo oltre i 350MB)
                 cleanup_disk_space()
                 return True
     except Exception as e:
         print("Errore upload Google Drive:", e)
     return False
+
+
+uploaded_gdrive_files = set()
+
+
+def start_ffmpeg_process(settings):
+    """Avvia il processo FFmpeg con gestione socket timeout e spezzettamento."""
+    host = get_active_host(settings)
+    port = settings.get("port", "554").strip()
+    user = settings.get("username", "luigi1").strip()
+    pwd = settings.get("password", "Luigi2026")
+    if not host or not user or not pwd:
+        raise ValueError("Parametri telecamera mancanti.")
+
+    stream = "stream1" if "stream1" in settings.get("quality", "") else "stream2"
+    safe_user = urllib.parse.quote(user, safe="")
+    safe_pwd = urllib.parse.quote(pwd, safe="")
+    rtsp_url = f"rtsp://{safe_user}:{safe_pwd}@{host}:{port}/{stream}"
+
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
+    audio_mode = settings.get("audio_mode", "video_audio")
+    split_mode = settings.get("split_mode", "30m")
+    dur_limit = int(settings.get("duration_limit", "0") or "0")
+
+    cmd = [
+        ffmpeg_exe,
+        "-rtsp_transport", "tcp",
+        "-stimeout", "10000000",
+        "-i", rtsp_url
+    ]
+
+    if dur_limit > 0:
+        cmd.extend(["-t", str(dur_limit)])
+
+    if audio_mode == "audio_only":
+        ext = "m4a"
+        output_pattern = str(MEDIA_DIR / f"Tapo_Audio_{timestamp}.{ext}")
+        cmd.extend(["-vn", "-c:a", "aac", output_pattern])
+    elif split_mode in ["15m", "30m", "1h", "2h"]:
+        seg_time = 900 if split_mode == "15m" else (1800 if split_mode == "30m" else (3600 if split_mode == "1h" else 7200))
+        output_pattern = str(MEDIA_DIR / "Tapo_%Y-%m-%d_%H-%M-%S.mp4")
+        if audio_mode == "video_only":
+            cmd.extend(["-an", "-c:v", "copy"])
+        else:
+            cmd.extend(["-c:v", "copy", "-c:a", "aac"])
+
+        cmd.extend([
+            "-movflags", "+faststart",
+            "-f", "segment",
+            "-segment_time", str(seg_time),
+            "-reset_timestamps", "1",
+            "-strftime", "1",
+            output_pattern,
+        ])
+    else:
+        output_pattern = str(MEDIA_DIR / f"Tapo_{timestamp}.mp4")
+        if audio_mode == "video_only":
+            cmd.extend(["-an", "-c:v", "copy"])
+        else:
+            cmd.extend(["-c:v", "copy", "-c:a", "aac"])
+        cmd.extend(["-movflags", "+faststart", output_pattern])
+
+    p = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    return p, output_pattern
+
+
+def recorder_watchdog():
+    """Watchdog continuo:
+    1. Ping Keep-Alive ogni 3 minuti per evitare lo sleep di Render quando chiudi l'app
+    2. Rileva i singoli spezzoni completati e li invia subito a Google Drive
+    3. Riconnette la registrazione se la rete o telecamera ha una caduta temporanea
+    """
+    last_ping = 0
+    file_stat_cache = {}
+
+    while True:
+        time.sleep(10)
+        now = time.time()
+
+        with state_lock:
+            is_rec = recorder_state.get("is_recording", False)
+            proc = recorder_state.get("process")
+
+        # 1. Keep-Alive per Render (ogni 3 minuti mentre si registra per non far dormire il server)
+        if is_rec and (now - last_ping > 180):
+            last_ping = now
+            try:
+                req = urllib.request.Request(
+                    "https://tapo-recorder.onrender.com/api/status",
+                    headers={"User-Agent": "TapoKeepAlive/1.0"}
+                )
+                with urllib.request.urlopen(req, timeout=10) as _:
+                    pass
+            except Exception:
+                pass
+
+        # 2. Invio automatico spezzoni a Google Drive mentre la registrazione continua
+        try:
+            settings = load_settings()
+            if settings.get("gdrive_url", "").strip():
+                all_files = sorted(MEDIA_DIR.glob("*.*"), key=lambda x: x.stat().st_mtime)
+                for f in all_files:
+                    if not (f.is_file() and f.suffix.lower() in [".mp4", ".m4a"]):
+                        continue
+                    fname = f.name
+                    if fname in uploaded_gdrive_files:
+                        continue
+
+                    cur_sz = f.stat().st_size
+                    prev_sz, prev_t = file_stat_cache.get(fname, (0, 0))
+
+                    # Se il file ha smesso di crescere da almeno 20s ed è > 50KB, lo spezzone è completato!
+                    if cur_sz == prev_sz and cur_sz > 50000 and (now - prev_t >= 20):
+                        ok = upload_to_gdrive(f)
+                        if ok:
+                            uploaded_gdrive_files.add(fname)
+                    else:
+                        file_stat_cache[fname] = (cur_sz, now)
+        except Exception:
+            pass
+
+        # 3. Watchdog: se ffmpeg cade durante la registrazione attiva, riavvia
+        if is_rec and proc and proc.poll() is not None:
+            time.sleep(3)
+            with state_lock:
+                if recorder_state.get("is_recording", False):
+                    try:
+                        settings = load_settings()
+                        new_p, new_pat = start_ffmpeg_process(settings)
+                        recorder_state["process"] = new_p
+                        recorder_state["current_file"] = new_pat
+                    except Exception as e:
+                        print("Watchdog error:", e)
+
+
+# Avvia il watchdog in background all'avvio
+threading.Thread(target=recorder_watchdog, daemon=True).start()
 
 
 @app.route("/")
@@ -181,87 +323,23 @@ def start_recording():
             settings[k] = req_data[k]
     save_settings(settings)
     cleanup_disk_space()
-    save_settings(settings)
 
     with state_lock:
         if recorder_state["is_recording"]:
             return jsonify({"success": False, "error": "Registrazione già attiva."}), 400
 
-        host = get_active_host(settings)
-        port = settings.get("port", "554").strip()
-        user = settings.get("username", "luigi1").strip()
-        pwd = settings.get("password", "Luigi2026")
-
-        if not host or not user or not pwd:
-            return jsonify({"success": False, "error": "Compila Indirizzo IP, Nome Utente e Password."}), 400
-
-        stream = "stream1" if "stream1" in settings.get("quality", "") else "stream2"
-        safe_user = urllib.parse.quote(user, safe="")
-        safe_pwd = urllib.parse.quote(pwd, safe="")
-        rtsp_url = f"rtsp://{safe_user}:{safe_pwd}@{host}:{port}/{stream}"
-
-        timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-
-        audio_mode = settings.get("audio_mode", "video_audio")
-        split_mode = settings.get("split_mode", "1h")
-        dur_limit = int(settings.get("duration_limit", "0") or "0")
-
-        # Base comando ffmpeg
-        cmd = [ffmpeg_exe, "-rtsp_transport", "tcp", "-i", rtsp_url]
-
-        # Limite durata programmata (se > 0)
-        if dur_limit > 0:
-            cmd.extend(["-t", str(dur_limit)])
-
-        if audio_mode == "audio_only":
-            # Modalità Solo Audio (MP3/AAC ultra-leggero, ~25MB/ora)
-            ext = "m4a"
-            output_pattern = str(MEDIA_DIR / f"Tapo_Audio_{timestamp}.{ext}")
-            cmd.extend(["-vn", "-c:a", "aac", output_pattern])
-        elif split_mode in ["1h", "2h"]:
-            # Modalità continua a spezzoni per lunghe registrazioni (> 3 ore senza blocchi)
-            seg_time = 3600 if split_mode == "1h" else 7200
-            output_pattern = str(MEDIA_DIR / "Tapo_%Y-%m-%d_%H-%M-%S.mp4")
-            
-            if audio_mode == "video_only":
-                cmd.extend(["-an", "-c:v", "copy"])
-            else:
-                cmd.extend(["-c:v", "copy", "-c:a", "aac"])
-
-            cmd.extend([
-                "-movflags", "+faststart",
-                "-f", "segment",
-                "-segment_time", str(seg_time),
-                "-reset_timestamps", "1",
-                "-strftime", "1",
-                output_pattern,
-            ])
-        else:
-            # File unico continuo
-            output_pattern = str(MEDIA_DIR / f"Tapo_{timestamp}.mp4")
-            if audio_mode == "video_only":
-                cmd.extend(["-an", "-c:v", "copy"])
-            else:
-                cmd.extend(["-c:v", "copy", "-c:a", "aac"])
-            cmd.extend(["-movflags", "+faststart", output_pattern])
-
         try:
-            p = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-            )
+            p, output_pattern = start_ffmpeg_process(settings)
             recorder_state["is_recording"] = True
             recorder_state["start_time"] = time.time()
             recorder_state["current_file"] = output_pattern
-            recorder_state["rec_type"] = audio_mode
+            recorder_state["rec_type"] = settings.get("audio_mode", "video_audio")
             recorder_state["process"] = p
             recorder_state["last_error"] = None
         except Exception as e:
             return jsonify({"success": False, "error": f"Errore avvio: {str(e)}"}), 500
 
+    audio_mode = settings.get("audio_mode", "video_audio")
     desc_map = {
         "video_audio": "Video Full HD + Audio microfono",
         "video_only": "Solo Video (Muto)",
