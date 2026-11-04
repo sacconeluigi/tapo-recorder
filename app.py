@@ -37,7 +37,7 @@ def load_settings():
         "password": "Luigi2026",
         "quality": "Alta (HD - stream1)",
         "audio_mode": "video_audio",  # video_audio, video_only, audio_only
-        "split_mode": "30m",          # none, 15m, 30m, 1h, 2h
+        "split_mode": "5m",           # none, 5m, 10m, 15m, 30m, 1h, 2h
         "duration_limit": "0",       # 0 = illimitato, 10800 = 3h, 21600 = 6h, 43200 = 12h
         "gdrive_url": "",            # URL Webhook Google Drive per salvataggio automatico
     }
@@ -97,6 +97,13 @@ def upload_to_gdrive(file_path):
         p = Path(file_path)
         if not p.exists():
             return False
+
+        file_size = p.stat().st_size
+        # Se il file supera i 40MB, Google Apps Script rifiuterebbe il payload (>50MB base64)
+        if file_size > 40 * 1024 * 1024:
+            print(f"File {p.name} troppo grande per Webhook Apps Script ({file_size / (1024*1024):.1f} MB > 40 MB).")
+            return False
+
         with open(p, "rb") as f:
             content = f.read()
         b64 = base64.b64encode(content).decode("utf-8")
@@ -120,7 +127,7 @@ uploaded_gdrive_files = set()
 
 
 def start_ffmpeg_process(settings):
-    """Avvia il processo FFmpeg con gestione socket timeout e spezzettamento."""
+    """Avvia il processo FFmpeg con gestione socket TCP e spezzettamento automatico."""
     host = get_active_host(settings)
     port = settings.get("port", "554").strip()
     user = settings.get("username", "luigi1").strip()
@@ -137,13 +144,12 @@ def start_ffmpeg_process(settings):
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
     audio_mode = settings.get("audio_mode", "video_audio")
-    split_mode = settings.get("split_mode", "30m")
+    split_mode = settings.get("split_mode", "5m")
     dur_limit = int(settings.get("duration_limit", "0") or "0")
 
     cmd = [
         ffmpeg_exe,
         "-rtsp_transport", "tcp",
-        "-stimeout", "10000000",
         "-i", rtsp_url
     ]
 
@@ -154,8 +160,16 @@ def start_ffmpeg_process(settings):
         ext = "m4a"
         output_pattern = str(MEDIA_DIR / f"Tapo_Audio_{timestamp}.{ext}")
         cmd.extend(["-vn", "-c:a", "aac", output_pattern])
-    elif split_mode in ["15m", "30m", "1h", "2h"]:
-        seg_time = 900 if split_mode == "15m" else (1800 if split_mode == "30m" else (3600 if split_mode == "1h" else 7200))
+    elif split_mode in ["5m", "10m", "15m", "30m", "1h", "2h"]:
+        seg_map = {
+            "5m": 300,
+            "10m": 600,
+            "15m": 900,
+            "30m": 1800,
+            "1h": 3600,
+            "2h": 7200
+        }
+        seg_time = seg_map.get(split_mode, 300)
         output_pattern = str(MEDIA_DIR / "Tapo_%Y-%m-%d_%H-%M-%S.mp4")
         if audio_mode == "video_only":
             cmd.extend(["-an", "-c:v", "copy"])
@@ -184,6 +198,11 @@ def start_ffmpeg_process(settings):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
     )
+    time.sleep(0.5)
+    if p.poll() is not None:
+        err = p.stderr.read().decode("utf-8", errors="ignore") if p.stderr else ""
+        raise RuntimeError(f"FFmpeg terminato subito: {err[-250:]}")
+
     return p, output_pattern
 
 

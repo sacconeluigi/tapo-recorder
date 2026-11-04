@@ -288,10 +288,11 @@
             <div class="col-md-4">
                 <label class="form-label small text-secondary mb-1"><i class="fa-solid fa-scissors text-primary me-1"></i> Spezzetta File</label>
                 <select id="cfgSplitMode" class="form-select form-select-sm" onchange="saveSettings(false)">
+                    <option value="5m" {% if settings.split_mode == '5m' or not settings.split_mode %}selected{% endif %}>✂️ Ogni 5 Minuti (Consigliato per Google Drive)</option>
+                    <option value="10m" {% if settings.split_mode == '10m' %}selected{% endif %}>✂️ Ogni 10 Minuti</option>
                     <option value="15m" {% if settings.split_mode == '15m' %}selected{% endif %}>✂️ Ogni 15 Minuti</option>
-                    <option value="30m" {% if settings.split_mode == '30m' or not settings.split_mode %}selected{% endif %}>✂️ Ogni 30 Minuti (Consigliato per Drive)</option>
+                    <option value="30m" {% if settings.split_mode == '30m' %}selected{% endif %}>✂️ Ogni 30 Minuti</option>
                     <option value="1h" {% if settings.split_mode == '1h' %}selected{% endif %}>✂️ Ogni 1 Ora</option>
-                    <option value="2h" {% if settings.split_mode == '2h' %}selected{% endif %}>✂️ Ogni 2 Ore</option>
                     <option value="none" {% if settings.split_mode == 'none' %}selected{% endif %}>📦 File Unico</option>
                 </select>
             </div>
