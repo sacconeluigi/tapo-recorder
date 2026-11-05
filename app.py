@@ -599,7 +599,7 @@ def list_videos():
     return jsonify({"videos": local_files})
 
 
-def send_onvif_ptz(direction):
+def send_onvif_ptz(direction, speed=0.35, timeout_s=10):
     """Invia comandi PTZ (Pan/Tilt) alla telecamera Tapo via ONVIF porta 2020."""
     import hashlib
     import base64
@@ -629,11 +629,12 @@ def send_onvif_ptz(direction):
       </wsse:Security>
     </s:Header>"""
 
+    speed_val = float(speed)
     speed_map = {
-        "up": (0.0, 1.0),
-        "down": (0.0, -1.0),
-        "left": (-1.0, 0.0),
-        "right": (1.0, 0.0),
+        "up": (0.0, speed_val),
+        "down": (0.0, -speed_val),
+        "left": (-speed_val, 0.0),
+        "right": (speed_val, 0.0),
     }
 
     if direction == "stop":
@@ -649,7 +650,7 @@ def send_onvif_ptz(direction):
           <tptz:Velocity>
             <tt:PanTilt x="{x}" y="{y}"/>
           </tptz:Velocity>
-          <tptz:Timeout>PT1S</tptz:Timeout>
+          <tptz:Timeout>PT{int(timeout_s)}S</tptz:Timeout>
         </tptz:ContinuousMove>"""
         action = "http://www.onvif.org/ver20/ptz/wsdl/ContinuousMove"
 
@@ -663,7 +664,8 @@ def send_onvif_ptz(direction):
 
     url = f"http://{host}:{port}/onvif/ptz_service"
     headers = {
-        "Content-Type": f'application/soap+xml; charset=utf-8; action="{action}"'
+        "Content-Type": f'application/soap+xml; charset=utf-8; action="{action}"',
+        "Connection": "close"
     }
     resp = requests.post(url, data=soap_envelope, headers=headers, timeout=4)
     return resp.status_code == 200

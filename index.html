@@ -67,7 +67,16 @@
             justify-content: center;
             font-size: 1.1rem;
             box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-            touch-action: manipulation;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            cursor: pointer;
+        }
+        .ptz-btn:active, .ptz-btn.active {
+            background-color: #0284c7 !important;
+            color: #ffffff !important;
+            transform: scale(0.92);
         }
         .ptz-btn-stop {
             width: 36px;
@@ -78,7 +87,15 @@
             justify-content: center;
             font-size: 0.8rem;
             box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-            touch-action: manipulation;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            cursor: pointer;
+        }
+        .ptz-btn-stop:active {
+            background-color: #dc2626 !important;
+            color: #ffffff !important;
         }
         .table {
             color: #e4e7eb;
@@ -149,50 +166,83 @@
         /* Floating PTZ Joystick Overlay sovrapposto al video */
         .live-overlay-ptz {
             position: absolute;
-            right: 15px;
-            bottom: 60px;
-            width: 140px;
-            height: 140px;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 130px;
+            height: 130px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: space-between;
             z-index: 30;
             pointer-events: auto;
-            background: rgba(15, 23, 42, 0.7);
+            background: rgba(15, 23, 42, 0.72);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.25);
+            border: 1.5px solid rgba(56, 189, 248, 0.4);
             border-radius: 50%;
-            padding: 8px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+            padding: 6px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.85);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
         }
         .ptz-float-btn {
             background: rgba(255, 255, 255, 0.15);
             border: 1px solid rgba(255, 255, 255, 0.35);
             color: #38bdf8;
-            width: 40px;
-            height: 40px;
+            width: 38px;
+            height: 38px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 1.15rem;
             transition: all 0.15s ease;
-            touch-action: manipulation;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            cursor: pointer;
         }
-        .ptz-float-btn:active {
+        .ptz-float-btn:active, .ptz-float-btn.active {
             background: #0284c7;
             color: #ffffff;
-            transform: scale(0.9);
+            transform: scale(0.92);
+            box-shadow: 0 0 10px #38bdf8;
         }
         .ptz-float-btn.ptz-stop {
-            width: 32px;
-            height: 32px;
+            width: 30px;
+            height: 30px;
             font-size: 0.8rem;
             color: #f87171;
             background: rgba(239, 68, 68, 0.25);
             border-color: rgba(239, 68, 68, 0.5);
+        }
+        .ptz-float-btn.ptz-stop:active {
+            background: #ef4444;
+            color: #fff;
+        }
+
+        @media (max-height: 520px) and (orientation: landscape) {
+            .live-overlay-ptz {
+                width: 110px;
+                height: 110px;
+                padding: 4px;
+                right: 8px;
+            }
+            .ptz-float-btn {
+                width: 32px;
+                height: 32px;
+                font-size: 0.95rem;
+            }
+            .ptz-float-btn.ptz-stop {
+                width: 24px;
+                height: 24px;
+                font-size: 0.7rem;
+            }
         }
         .ptz-feedback-badge {
             position: absolute;
@@ -304,13 +354,13 @@
 
             <!-- Floating D-Pad Movimenti (Sovrapposto al video, visibile ruotando lo schermo e a tutto schermo) -->
             <div class="live-overlay-ptz" id="floatingPtzOverlay" style="display:none;">
-                <button class="ptz-float-btn" onclick="ptzMove('up')" title="In Alto"><i class="fa-solid fa-chevron-up"></i></button>
+                <button class="ptz-float-btn" onmousedown="startPtz('up', event)" onmouseup="stopPtz(event)" onmouseleave="stopPtz(event)" ontouchstart="startPtz('up', event)" ontouchend="stopPtz(event)" ontouchcancel="stopPtz(event)" title="In Alto"><i class="fa-solid fa-chevron-up"></i></button>
                 <div class="d-flex justify-content-between align-items-center w-100 px-1">
-                    <button class="ptz-float-btn" onclick="ptzMove('left')" title="A Sinistra"><i class="fa-solid fa-chevron-left"></i></button>
-                    <button class="ptz-float-btn ptz-stop" onclick="ptzMove('stop')" title="Ferma"><i class="fa-solid fa-circle-dot"></i></button>
-                    <button class="ptz-float-btn" onclick="ptzMove('right')" title="A Destra"><i class="fa-solid fa-chevron-right"></i></button>
+                    <button class="ptz-float-btn" onmousedown="startPtz('left', event)" onmouseup="stopPtz(event)" onmouseleave="stopPtz(event)" ontouchstart="startPtz('left', event)" ontouchend="stopPtz(event)" ontouchcancel="stopPtz(event)" title="A Sinistra"><i class="fa-solid fa-chevron-left"></i></button>
+                    <button class="ptz-float-btn ptz-stop" onclick="stopPtz(event)" title="Ferma"><i class="fa-solid fa-circle-dot"></i></button>
+                    <button class="ptz-float-btn" onmousedown="startPtz('right', event)" onmouseup="stopPtz(event)" onmouseleave="stopPtz(event)" ontouchstart="startPtz('right', event)" ontouchend="stopPtz(event)" ontouchcancel="stopPtz(event)" title="A Destra"><i class="fa-solid fa-chevron-right"></i></button>
                 </div>
-                <button class="ptz-float-btn" onclick="ptzMove('down')" title="In Basso"><i class="fa-solid fa-chevron-down"></i></button>
+                <button class="ptz-float-btn" onmousedown="startPtz('down', event)" onmouseup="stopPtz(event)" onmouseleave="stopPtz(event)" ontouchstart="startPtz('down', event)" ontouchend="stopPtz(event)" ontouchcancel="stopPtz(event)" title="In Basso"><i class="fa-solid fa-chevron-down"></i></button>
             </div>
 
             <!-- Notifica rapida di movimento al centro del video -->
@@ -368,19 +418,19 @@
             <div class="d-flex justify-content-center align-items-center py-1">
                 <div style="width: 160px;">
                     <div class="d-flex justify-content-center">
-                        <button class="btn btn-sm btn-outline-info ptz-btn" onclick="ptzMove('up')" title="Sposta in Alto"><i class="fa-solid fa-chevron-up"></i></button>
+                        <button class="btn btn-sm btn-outline-info ptz-btn" onmousedown="startPtz('up', event)" onmouseup="stopPtz(event)" onmouseleave="stopPtz(event)" ontouchstart="startPtz('up', event)" ontouchend="stopPtz(event)" ontouchcancel="stopPtz(event)" title="Sposta in Alto"><i class="fa-solid fa-chevron-up"></i></button>
                     </div>
                     <div class="d-flex justify-content-center align-items-center gap-2 my-1">
-                        <button class="btn btn-sm btn-outline-info ptz-btn" onclick="ptzMove('left')" title="Sposta a Sinistra"><i class="fa-solid fa-chevron-left"></i></button>
-                        <button class="btn btn-sm btn-danger ptz-btn-stop" onclick="ptzMove('stop')" title="Ferma"><i class="fa-solid fa-circle-dot"></i></button>
-                        <button class="btn btn-sm btn-outline-info ptz-btn" onclick="ptzMove('right')" title="Sposta a Destra"><i class="fa-solid fa-chevron-right"></i></button>
+                        <button class="btn btn-sm btn-outline-info ptz-btn" onmousedown="startPtz('left', event)" onmouseup="stopPtz(event)" onmouseleave="stopPtz(event)" ontouchstart="startPtz('left', event)" ontouchend="stopPtz(event)" ontouchcancel="stopPtz(event)" title="Sposta a Sinistra"><i class="fa-solid fa-chevron-left"></i></button>
+                        <button class="btn btn-sm btn-danger ptz-btn-stop" onclick="stopPtz(event)" title="Ferma"><i class="fa-solid fa-circle-dot"></i></button>
+                        <button class="btn btn-sm btn-outline-info ptz-btn" onmousedown="startPtz('right', event)" onmouseup="stopPtz(event)" onmouseleave="stopPtz(event)" ontouchstart="startPtz('right', event)" ontouchend="stopPtz(event)" ontouchcancel="stopPtz(event)" title="Sposta a Destra"><i class="fa-solid fa-chevron-right"></i></button>
                     </div>
                     <div class="d-flex justify-content-center">
-                        <button class="btn btn-sm btn-outline-info ptz-btn" onclick="ptzMove('down')" title="Sposta in Basso"><i class="fa-solid fa-chevron-down"></i></button>
+                        <button class="btn btn-sm btn-outline-info ptz-btn" onmousedown="startPtz('down', event)" onmouseup="stopPtz(event)" onmouseleave="stopPtz(event)" ontouchstart="startPtz('down', event)" ontouchend="stopPtz(event)" ontouchcancel="stopPtz(event)" title="Sposta in Basso"><i class="fa-solid fa-chevron-down"></i></button>
                     </div>
                 </div>
             </div>
-            <div class="text-secondary small mt-1" style="font-size: 0.75rem;">Premi le frecce per ruotare l'inquadratura in tempo reale</div>
+            <div class="text-secondary small mt-1" style="font-size: 0.75rem;">💡 <strong>Tieni premuto</strong> per ruotare in continuo, rilascia per fermare la telecamera nella posizione esatta.</div>
         </div>
 
         <!-- Box Cronometro & File Attivo -->
@@ -943,40 +993,116 @@
         }
     }
 
+    let ptzActive = false;
+    let ptzCurrentDir = null;
+    let ptzStartTime = 0;
+    let ptzStopTimeout = null;
+    let ptzSafetyTimer = null;
     let ptzFeedbackTimer = null;
-    async function ptzMove(direction) {
+
+    const dirNames = {
+        'up': '⬆️ IN ALTO',
+        'down': '⬇️ IN BASSO',
+        'left': '⬅️ A SINISTRA',
+        'right': '➡️ A DESTRA',
+        'stop': '⏹️ FERMO'
+    };
+
+    function showPtzBadge(text, autoHideMs = 0) {
         const badge = document.getElementById('ptzFeedbackBadge');
-        const dirNames = {
-            'up': '⬆️ IN ALTO',
-            'down': '⬇️ IN BASSO',
-            'left': '⬅️ A SINISTRA',
-            'right': '➡️ A DESTRA',
-            'stop': '⏹️ FERMO'
-        };
-        if (badge) {
-            badge.innerHTML = `<i class="fa-solid fa-arrows-spin fa-spin me-2"></i>Rotazione ${dirNames[direction] || direction}...`;
-            badge.style.display = 'block';
-            if (ptzFeedbackTimer) clearTimeout(ptzFeedbackTimer);
+        if (!badge) return;
+        badge.innerHTML = text;
+        badge.style.display = 'block';
+        if (ptzFeedbackTimer) {
+            clearTimeout(ptzFeedbackTimer);
+            ptzFeedbackTimer = null;
+        }
+        if (autoHideMs > 0) {
             ptzFeedbackTimer = setTimeout(() => {
                 badge.style.display = 'none';
-            }, 1800);
+            }, autoHideMs);
         }
+    }
+
+    async function startPtz(direction, evt) {
+        if (evt) {
+            try { evt.preventDefault(); evt.stopPropagation(); } catch(e){}
+        }
+        if (ptzActive && ptzCurrentDir === direction) return;
+
+        if (ptzStopTimeout) {
+            clearTimeout(ptzStopTimeout);
+            ptzStopTimeout = null;
+        }
+        if (ptzSafetyTimer) {
+            clearTimeout(ptzSafetyTimer);
+            ptzSafetyTimer = null;
+        }
+
+        ptzActive = true;
+        ptzCurrentDir = direction;
+        ptzStartTime = Date.now();
+
+        showPtzBadge(`<i class="fa-solid fa-arrows-spin fa-spin me-2"></i>Ruotando ${dirNames[direction] || direction}...<br><span style="font-size:0.75rem; opacity:0.85;">(Rilascia per fermare)</span>`);
+
+        // Timer di sicurezza frontend: stop automatico dopo 9s se ci si dimentica di rilasciare
+        ptzSafetyTimer = setTimeout(() => {
+            if (ptzActive) stopPtz();
+        }, 9000);
 
         try {
             const res = await fetch('/api/ptz/' + direction, { method: 'POST' });
             const data = await res.json();
-            if (!data.success) {
-                if (badge) {
-                    badge.innerHTML = `⚠️ ${data.error}`;
-                    badge.style.display = 'block';
-                }
+            if (!data.success && ptzActive) {
+                showPtzBadge(`⚠️ ${data.error}`, 2500);
             }
         } catch(e) {
-            console.error('PTZ error:', e);
-            if (badge) {
-                badge.innerHTML = `⚠️ Errore di connessione`;
-                badge.style.display = 'block';
+            console.error('PTZ start error:', e);
+            if (ptzActive) showPtzBadge(`⚠️ Errore connessione PTZ`, 2500);
+        }
+    }
+
+    async function stopPtz(evt) {
+        if (evt) {
+            try { evt.preventDefault(); evt.stopPropagation(); } catch(e){}
+        }
+        if (!ptzActive && !ptzCurrentDir) {
+            fetch('/api/ptz/stop', { method: 'POST' }).catch(()=>{});
+            showPtzBadge('⏹️ Telecamera Ferma', 1000);
+            return;
+        }
+
+        ptzActive = false;
+        if (ptzSafetyTimer) {
+            clearTimeout(ptzSafetyTimer);
+            ptzSafetyTimer = null;
+        }
+
+        const elapsed = Date.now() - ptzStartTime;
+        ptzCurrentDir = null;
+
+        // Se è stato un tocco brevissimo (tap < 200ms), concedi almeno 200ms di rotazione
+        // per permettere alla telecamera di compiere un piccolo micro-scatto prima di arrestarsi.
+        const minDuration = 200;
+        const delay = elapsed < minDuration ? (minDuration - elapsed) : 0;
+
+        ptzStopTimeout = setTimeout(async () => {
+            showPtzBadge('⏹️ Telecamera Ferma', 1200);
+            try {
+                await fetch('/api/ptz/stop', { method: 'POST' });
+            } catch(e) {
+                console.error('PTZ stop error:', e);
             }
+        }, delay);
+    }
+
+    // Wrapper retrocompatibile
+    function ptzMove(direction) {
+        if (direction === 'stop') {
+            stopPtz();
+        } else {
+            startPtz(direction);
+            setTimeout(stopPtz, 300);
         }
     }
 
