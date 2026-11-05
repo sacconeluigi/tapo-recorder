@@ -423,7 +423,7 @@ def api_upload_drive(filename):
 
 @app.route("/api/snapshot")
 def take_snapshot():
-    """Scatta una foto istantanea JPEG ad alta risoluzione dalla telecamera."""
+    """Scatta una foto istantanea JPEG dalla telecamera senza disturbare la registrazione su stream1."""
     settings = load_settings()
     host = get_active_host(settings)
     port = settings.get("port", "554").strip()
@@ -432,7 +432,8 @@ def take_snapshot():
 
     safe_user = urllib.parse.quote(user, safe="")
     safe_pwd = urllib.parse.quote(pwd, safe="")
-    rtsp_url = f"rtsp://{safe_user}:{safe_pwd}@{host}:{port}/stream1"
+    # Usiamo stream2 per lo scatto: NON interferisce con stream1 usato dalla registrazione continua!
+    rtsp_url = f"rtsp://{safe_user}:{safe_pwd}@{host}:{port}/stream2"
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -561,15 +562,52 @@ def stream_or_download_video(filename):
     )
 
 
+def delete_from_gdrive(filename):
+    """Elimina il file anche da Google Drive tramite il Webhook Apps Script."""
+    settings = load_settings()
+    url = settings.get("gdrive_url", "").strip()
+    if not url:
+        return False
+    try:
+        import urllib.request
+        import urllib.parse
+        post_data = urllib.parse.urlencode({
+            "action": "delete",
+            "filename": filename
+        }).encode("utf-8")
+        req = urllib.request.Request(url, data=post_data, headers={"User-Agent": "TapoCloudRecorder"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            res_text = resp.read().decode("utf-8")
+            if "DELETED" in res_text or "OK" in res_text:
+                return True
+    except Exception as e:
+        print(f"Errore cancellazione Google Drive per {filename}:", e)
+    return False
+
+
 @app.route("/api/delete_video/<filename>", methods=["POST"])
 def delete_video(filename):
     file_path = MEDIA_DIR / filename
+    local_deleted = False
     if file_path.exists():
         try:
             file_path.unlink()
-            return jsonify({"success": True, "message": f"File {filename} eliminato."})
+            local_deleted = True
         except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+            print("Errore eliminazione locale:", e)
+
+    # Rimuovi dalla cache upload per sicurezza
+    uploaded_gdrive_files.discard(filename)
+
+    # Elimina anche da Google Drive
+    gdrive_deleted = delete_from_gdrive(filename)
+
+    if local_deleted or gdrive_deleted:
+        msg = f"File {filename} eliminato con successo!"
+        if gdrive_deleted:
+            msg += " (Rimosso anche da Google Drive)"
+        return jsonify({"success": True, "message": msg, "gdrive_deleted": gdrive_deleted})
+
     return jsonify({"success": False, "error": "File non trovato."}), 404
 
 

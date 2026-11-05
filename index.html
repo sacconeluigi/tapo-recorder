@@ -486,10 +486,33 @@
     }
 
     function takeSnapshot() {
+        const liveImg = document.getElementById('liveImg');
+        // Se la diretta live è aperta sul display, cattura istantaneamente dal video senza disturbare la telecamera
+        if (liveImg && liveImg.style.display !== 'none' && liveImg.naturalWidth > 0) {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = liveImg.naturalWidth;
+                canvas.height = liveImg.naturalHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(liveImg, 0, 0);
+                const a = document.createElement('a');
+                a.href = canvas.toDataURL('image/jpeg', 0.95);
+                a.download = 'Foto_Tapo_' + Date.now() + '.jpg';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                return;
+            } catch(e) {
+                console.warn('Canvas capture non disponibile, uso server:', e);
+            }
+        }
+
         const btn = document.getElementById('btnSnapshot');
-        const oldHtml = btn.innerHTML;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Scatto...';
-        btn.disabled = true;
+        const oldHtml = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Scatto...';
+            btn.disabled = true;
+        }
 
         const a = document.createElement('a');
         a.href = '/api/snapshot?t=' + Date.now();
@@ -499,8 +522,10 @@
         document.body.removeChild(a);
 
         setTimeout(() => {
-            btn.innerHTML = oldHtml;
-            btn.disabled = false;
+            if (btn) {
+                btn.innerHTML = oldHtml;
+                btn.disabled = false;
+            }
             loadVideos();
         }, 3000);
     }
@@ -756,7 +781,7 @@
     }
 
     async function deleteVideo(filename) {
-        if (!confirm('Sei sicuro di voler eliminare ' + filename + '?')) return;
+        if (!confirm('Sei sicuro di voler eliminare ' + filename + '?\n\nVerrà rimosso sia dall\'app che da Google Drive.')) return;
         const res = await fetch('/api/delete_video/' + encodeURIComponent(filename), { method: 'POST' });
         const data = await res.json();
         if (data.success) {
