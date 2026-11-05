@@ -521,23 +521,159 @@ def live_stream():
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
+def fetch_gdrive_videos():
+    """Recupera l'elenco dei video archiviati su Google Drive tramite Webhook Apps Script."""
+    settings = load_settings()
+    url = settings.get("gdrive_url", "").strip()
+    if not url:
+        return []
+    try:
+        import urllib.request
+        import urllib.parse
+        post_data = urllib.parse.urlencode({"action": "list"}).encode("utf-8")
+        req = urllib.request.Request(url, data=post_data, headers={"User-Agent": "TapoCloudRecorder"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if isinstance(data, list):
+                return data
+    except Exception as e:
+        print("Fetch Google Drive list:", e)
+    return []
+
+
 @app.route("/api/videos")
 def list_videos():
-    files = []
+    local_files = []
+    seen_names = set()
+
+    # 1. File salvati in locale su Render
     for f in MEDIA_DIR.glob("*.*"):
         if f.is_file() and f.suffix.lower() in [".mp4", ".m4a", ".jpg"]:
             stat = f.stat()
             size_mb = round(stat.st_size / (1024 * 1024), 2)
             mtime_str = time.strftime("%d/%m/%Y %H:%M:%S", time.localtime(stat.st_mtime))
-            files.append({
+            local_files.append({
                 "name": f.name,
                 "size_mb": size_mb,
                 "date": mtime_str,
                 "mtime": stat.st_mtime,
                 "type": "audio" if f.suffix == ".m4a" else ("photo" if f.suffix == ".jpg" else "video"),
+                "source": "local",
+                "url": f"/api/video/{f.name}"
             })
-    files.sort(key=lambda x: x["mtime"], reverse=True)
-    return jsonify({"videos": files})
+            seen_names.add(f.name)
+
+    # 2. File archiviati su Google Drive
+    try:
+        gdrive_files = fetch_gdrive_videos()
+        for gf in gdrive_files:
+            fname = gf.get("name", "")
+            if fname and fname not in seen_names:
+                local_files.append({
+                    "name": fname,
+                    "size_mb": float(gf.get("size_mb", 0)),
+                    "date": gf.get("date", "Google Drive"),
+                    "mtime": 0,
+                    "type": "video" if fname.endswith(".mp4") else ("audio" if fname.endswith(".m4a") else "photo"),
+                    "source": "gdrive",
+                    "url": gf.get("url", ""),
+                    "id": gf.get("id", "")
+                })
+                seen_names.add(fname)
+    except Exception as e:
+        print("Errore merge Drive list:", e)
+
+    local_files.sort(key=lambda x: (x["mtime"], x.get("date", "")), reverse=True)
+    return jsonify({"videos": local_files})
+
+
+def send_onvif_ptz(direction):
+    """Invia comandi PTZ (Pan/Tilt) alla telecamera Tapo via ONVIF porta 2020."""
+    import hashlib
+    import base64
+    import datetime
+    import requests
+
+    settings = load_settings()
+    host = get_active_host(settings)
+    port = "2020"
+    user = settings.get("username", "luigi1").strip()
+    pwd = settings.get("password", "Luigi2026")
+
+    created = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    nonce_raw = os.urandom(16)
+    nonce_b64 = base64.b64encode(nonce_raw).decode("utf-8")
+    digest = hashlib.sha1(nonce_raw + created.encode("utf-8") + pwd.encode("utf-8")).digest()
+    digest_b64 = base64.b64encode(digest).decode("utf-8")
+
+    wsse_header = f"""<s:Header>
+      <wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">
+        <wsse:UsernameToken>
+          <wsse:Username>{user}</wsse:Username>
+          <wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">{digest_b64}</wsse:Password>
+          <wsse:Nonce EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary">{nonce_b64}</wsse:Nonce>
+          <wsu:Created>{created}</wsu:Created>
+        </wsse:UsernameToken>
+      </wsse:Security>
+    </s:Header>"""
+
+    speed_map = {
+        "up": (0.0, 0.5),
+        "down": (0.0, -0.5),
+        "left": (-0.5, 0.0),
+        "right": (0.5, 0.0),
+    }
+
+    if direction == "stop":
+        soap_body = f"""<tptz:Stop xmlns:tptz="http://www.onvif.org/ver20/ptz/wsdl">
+          <tptz:ProfileToken>Profile_1</tptz:ProfileToken>
+          <tptz:PanTilt>true</tptz:PanTilt>
+        </tptz:Stop>"""
+        action = "http://www.onvif.org/ver20/ptz/wsdl/Stop"
+    else:
+        x, y = speed_map.get(direction, (0.0, 0.0))
+        soap_body = f"""<tptz:ContinuousMove xmlns:tptz="http://www.onvif.org/ver20/ptz/wsdl" xmlns:tt="http://www.onvif.org/ver10/schema">
+          <tptz:ProfileToken>Profile_1</tptz:ProfileToken>
+          <tptz:Velocity>
+            <tt:PanTilt x="{x}" y="{y}"/>
+          </tptz:Velocity>
+          <tptz:Timeout>PT0.6S</tptz:Timeout>
+        </tptz:ContinuousMove>"""
+        action = "http://www.onvif.org/ver20/ptz/wsdl/ContinuousMove"
+
+    soap_envelope = f"""<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
+  {wsse_header}
+  <s:Body>
+    {soap_body}
+  </s:Body>
+</s:Envelope>"""
+
+    url = f"http://{host}:{port}/onvif/ptz_service"
+    headers = {
+        "Content-Type": f'application/soap+xml; charset=utf-8; action="{action}"'
+    }
+    resp = requests.post(url, data=soap_envelope, headers=headers, timeout=4)
+    return resp.status_code == 200
+
+
+@app.route("/api/ptz/<direction>", methods=["POST"])
+def api_ptz(direction):
+    if direction not in ["up", "down", "left", "right", "stop"]:
+        return jsonify({"success": False, "error": "Direzione non valida."}), 400
+    try:
+        ok = send_onvif_ptz(direction)
+        if ok:
+            return jsonify({"success": True, "direction": direction})
+        return jsonify({
+            "success": False,
+            "error": "La telecamera non ha risposto. Assicurati che la porta 2020 sia aperta nel modem TIM come la 554."
+        }), 502
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Errore PTZ (porta 2020): {str(e)}. Controlla il Port Forwarding della porta 2020 sul modem TIM."
+        }), 500
 
 
 @app.route("/api/download/<filename>")
@@ -545,6 +681,15 @@ def list_videos():
 def stream_or_download_video(filename):
     file_path = MEDIA_DIR / filename
     if not file_path.exists():
+        # Se non esiste in locale, cerca su Google Drive e reindirizza
+        try:
+            from flask import redirect
+            gdrive_files = fetch_gdrive_videos()
+            for gf in gdrive_files:
+                if gf.get("name") == filename and gf.get("url"):
+                    return redirect(gf.get("url"))
+        except Exception:
+            pass
         abort(404)
     mimetype = "video/mp4"
     if filename.endswith(".m4a"):

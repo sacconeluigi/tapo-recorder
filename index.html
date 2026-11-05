@@ -58,6 +58,28 @@
             align-items: center;
             justify-content: center;
         }
+        .ptz-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50% !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+            touch-action: manipulation;
+        }
+        .ptz-btn-stop {
+            width: 36px;
+            height: 36px;
+            border-radius: 50% !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+            touch-action: manipulation;
+        }
         .table {
             color: #e4e7eb;
         }
@@ -252,6 +274,30 @@
                     <i class="fa-solid fa-stop me-2"></i>FERMA E SALVA
                 </button>
             </div>
+        </div>
+
+        <!-- Controlli Movimento Telecamera (PTZ Pan / Tilt) -->
+        <div class="card bg-black border-secondary p-2 mb-3 text-center rounded-3 shadow">
+            <div class="d-flex justify-content-between align-items-center px-2 mb-2">
+                <span class="small fw-bold text-light"><i class="fa-solid fa-arrows-up-down-left-right text-info me-2"></i>Controlli Rotazione Telecamera (Pan / Tilt)</span>
+                <span class="badge bg-secondary" style="font-size: 0.7rem;">Porta 2020</span>
+            </div>
+            <div class="d-flex justify-content-center align-items-center py-1">
+                <div style="width: 160px;">
+                    <div class="d-flex justify-content-center">
+                        <button class="btn btn-sm btn-outline-info ptz-btn" onclick="ptzMove('up')" title="Sposta in Alto"><i class="fa-solid fa-chevron-up"></i></button>
+                    </div>
+                    <div class="d-flex justify-content-center align-items-center gap-2 my-1">
+                        <button class="btn btn-sm btn-outline-info ptz-btn" onclick="ptzMove('left')" title="Sposta a Sinistra"><i class="fa-solid fa-chevron-left"></i></button>
+                        <button class="btn btn-sm btn-danger ptz-btn-stop" onclick="ptzMove('stop')" title="Ferma"><i class="fa-solid fa-circle-dot"></i></button>
+                        <button class="btn btn-sm btn-outline-info ptz-btn" onclick="ptzMove('right')" title="Sposta a Destra"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                    <div class="d-flex justify-content-center">
+                        <button class="btn btn-sm btn-outline-info ptz-btn" onclick="ptzMove('down')" title="Sposta in Basso"><i class="fa-solid fa-chevron-down"></i></button>
+                    </div>
+                </div>
+            </div>
+            <div class="text-secondary small mt-1" style="font-size: 0.75rem;">Premi le frecce per ruotare l'inquadratura in tempo reale</div>
         </div>
 
         <!-- Box Cronometro & File Attivo -->
@@ -663,16 +709,26 @@
                 if (v.type === 'audio') iconClass = 'fa-file-audio text-warning';
                 if (v.type === 'photo') iconClass = 'fa-file-image text-info';
 
+                let sourceBadge = v.source === 'gdrive' 
+                    ? '<span class="badge bg-warning text-dark ms-1" style="font-size:0.7rem;"><i class="fa-brands fa-google-drive"></i> Drive</span>'
+                    : '<span class="badge bg-secondary ms-1" style="font-size:0.7rem;">Locale</span>';
+
+                let playBtn = '';
+                if (v.source === 'gdrive' && v.url) {
+                    playBtn = `<a href="${v.url}" target="_blank" class="btn btn-sm btn-outline-warning me-1" title="Apri su Google Drive"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>`;
+                } else {
+                    playBtn = `<button class="btn btn-sm btn-outline-info me-1" onclick="playVideo('${v.name}')" title="Guarda o Ascolta"><i class="fa-solid fa-play"></i></button>`;
+                }
+
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td class="fw-bold"><i class="fa-solid ${iconClass} me-2"></i>${v.name}</td>
+                    <td class="fw-bold text-truncate" style="max-width: 200px;"><i class="fa-solid ${iconClass} me-1"></i>${v.name} ${sourceBadge}</td>
                     <td class="text-secondary small">${v.date}</td>
                     <td><span class="badge bg-dark border border-secondary">${v.size_mb} MB</span></td>
                     <td class="text-end text-nowrap">
-                        <button class="btn btn-sm btn-outline-info me-1" onclick="playVideo('${v.name}')" title="Guarda o Ascolta"><i class="fa-solid fa-play"></i></button>
+                        ${playBtn}
                         <a href="/api/download/${encodeURIComponent(v.name)}" download="${v.name}" class="btn btn-sm btn-outline-success me-1" title="Scarica File"><i class="fa-solid fa-download"></i></a>
                         <button class="btn btn-sm btn-outline-primary me-1" onclick="shareFile('${v.name}')" title="Condividi o Salva nel Rullino iPhone"><i class="fa-solid fa-arrow-up-from-bracket"></i></button>
-                        <button class="btn btn-sm btn-outline-warning me-1" onclick="saveToDrive('${v.name}')" title="Salva su Google Drive"><i class="fa-brands fa-google-drive"></i></button>
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteVideo('${v.name}')" title="Elimina"><i class="fa-solid fa-trash"></i></button>
                     </td>
                 `;
@@ -788,6 +844,18 @@
             loadVideos();
         } else {
             alert('Errore: ' + data.error);
+        }
+    }
+
+    async function ptzMove(direction) {
+        try {
+            const res = await fetch('/api/ptz/' + direction, { method: 'POST' });
+            const data = await res.json();
+            if (!data.success) {
+                alert(data.error);
+            }
+        } catch(e) {
+            console.error('PTZ error:', e);
         }
     }
 
