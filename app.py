@@ -618,10 +618,10 @@ def send_onvif_ptz(direction):
     </s:Header>"""
 
     speed_map = {
-        "up": (0.0, 0.5),
-        "down": (0.0, -0.5),
-        "left": (-0.5, 0.0),
-        "right": (0.5, 0.0),
+        "up": (0.0, 0.8),
+        "down": (0.0, -0.8),
+        "left": (-0.8, 0.0),
+        "right": (0.8, 0.0),
     }
 
     if direction == "stop":

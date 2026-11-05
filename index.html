@@ -145,6 +145,72 @@
             background: rgba(30, 36, 46, 0.95);
             border-color: rgba(255, 255, 255, 0.5);
         }
+        
+        /* Floating PTZ Joystick Overlay sovrapposto al video */
+        .live-overlay-ptz {
+            position: absolute;
+            right: 15px;
+            bottom: 60px;
+            width: 140px;
+            height: 140px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 30;
+            pointer-events: auto;
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 50%;
+            padding: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+        }
+        .ptz-float-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            color: #38bdf8;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+            transition: all 0.15s ease;
+            touch-action: manipulation;
+        }
+        .ptz-float-btn:active {
+            background: #0284c7;
+            color: #ffffff;
+            transform: scale(0.9);
+        }
+        .ptz-float-btn.ptz-stop {
+            width: 32px;
+            height: 32px;
+            font-size: 0.8rem;
+            color: #f87171;
+            background: rgba(239, 68, 68, 0.25);
+            border-color: rgba(239, 68, 68, 0.5);
+        }
+        .ptz-feedback-badge {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: #38bdf8;
+            border: 1px solid #38bdf8;
+            padding: 8px 18px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            z-index: 35;
+            pointer-events: none;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.8);
+        }
         .overlay-badge {
             background: rgba(18, 20, 24, 0.85);
             backdrop-filter: blur(8px);
@@ -221,6 +287,9 @@
                     </div>
                 </div>
                 <div class="ms-auto d-flex gap-2">
+                    <button class="overlay-btn" id="btnTogglePtzOverlay" onclick="togglePtzOverlay()" title="Mostra/Nascondi Frecce Rotazione">
+                        <i class="fa-solid fa-arrows-up-down-left-right me-1"></i> Frecce
+                    </button>
                     <button class="overlay-btn" onclick="takeSnapshot()" title="Scatta Foto">
                         <i class="fa-solid fa-camera me-1"></i> Foto
                     </button>
@@ -232,6 +301,20 @@
 
             <!-- Immagine Flusso Live Streaming -->
             <img id="liveImg" src="" class="img-fluid" style="display:none; max-height: 500px; width: 100%; object-fit: contain;" alt="Diretta Live Tapo" />
+
+            <!-- Floating D-Pad Movimenti (Sovrapposto al video, visibile ruotando lo schermo e a tutto schermo) -->
+            <div class="live-overlay-ptz" id="floatingPtzOverlay" style="display:none;">
+                <button class="ptz-float-btn" onclick="ptzMove('up')" title="In Alto"><i class="fa-solid fa-chevron-up"></i></button>
+                <div class="d-flex justify-content-between align-items-center w-100 px-1">
+                    <button class="ptz-float-btn" onclick="ptzMove('left')" title="A Sinistra"><i class="fa-solid fa-chevron-left"></i></button>
+                    <button class="ptz-float-btn ptz-stop" onclick="ptzMove('stop')" title="Ferma"><i class="fa-solid fa-circle-dot"></i></button>
+                    <button class="ptz-float-btn" onclick="ptzMove('right')" title="A Destra"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+                <button class="ptz-float-btn" onclick="ptzMove('down')" title="In Basso"><i class="fa-solid fa-chevron-down"></i></button>
+            </div>
+
+            <!-- Notifica rapida di movimento al centro del video -->
+            <div id="ptzFeedbackBadge" class="ptz-feedback-badge" style="display:none;"></div>
 
             <!-- Schermata di attesa quando la Diretta è chiusa -->
             <div id="livePlaceholder" class="text-center p-4">
@@ -472,6 +555,7 @@
         const btn = document.getElementById('btnToggleLive');
         const overlayLive = document.getElementById('overlayLiveBadge');
         const overlayBottom = document.getElementById('overlayControlsBottom');
+        const overlayPtz = document.getElementById('floatingPtzOverlay');
 
         if (!isLiveActive) {
             isLiveActive = true;
@@ -482,6 +566,7 @@
             btn.innerHTML = '<i class="fa-solid fa-eye-slash me-2"></i>Chiudi Diretta';
             overlayLive.style.display = 'inline-block';
             overlayBottom.style.display = 'flex';
+            if (overlayPtz) overlayPtz.style.display = 'flex';
         } else {
             isLiveActive = false;
             img.style.display = 'none';
@@ -491,7 +576,18 @@
             btn.innerHTML = '<i class="fa-solid fa-eye me-2"></i>Mostra Diretta';
             overlayLive.style.display = 'none';
             overlayBottom.style.display = 'none';
+            if (overlayPtz) overlayPtz.style.display = 'none';
             closeFullscreen();
+        }
+    }
+
+    function togglePtzOverlay() {
+        const overlayPtz = document.getElementById('floatingPtzOverlay');
+        if (!overlayPtz) return;
+        if (overlayPtz.style.display === 'none') {
+            overlayPtz.style.display = 'flex';
+        } else {
+            overlayPtz.style.display = 'none';
         }
     }
 
@@ -847,15 +943,34 @@
         }
     }
 
+    let ptzFeedbackTimer = null;
     async function ptzMove(direction) {
+        const badge = document.getElementById('ptzFeedbackBadge');
+        const dirNames = {
+            'up': '⬆️ In Alto',
+            'down': '⬇️ In Basso',
+            'left': '⬅️ A Sinistra',
+            'right': '➡️ A Destra',
+            'stop': '⏹️ Fermato'
+        };
+        if (badge) {
+            badge.innerText = dirNames[direction] ? '🔄 Rotazione ' + dirNames[direction] : '🔄 Rotazione...';
+            badge.style.display = 'block';
+            if (ptzFeedbackTimer) clearTimeout(ptzFeedbackTimer);
+            ptzFeedbackTimer = setTimeout(() => {
+                badge.style.display = 'none';
+            }, 1400);
+        }
+
         try {
             const res = await fetch('/api/ptz/' + direction, { method: 'POST' });
             const data = await res.json();
             if (!data.success) {
-                alert(data.error);
+                if (badge) badge.innerText = '⚠️ ' + data.error;
             }
         } catch(e) {
             console.error('PTZ error:', e);
+            if (badge) badge.innerText = '⚠️ Errore connessione';
         }
     }
 
