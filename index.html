@@ -947,30 +947,36 @@
     async function ptzMove(direction) {
         const badge = document.getElementById('ptzFeedbackBadge');
         const dirNames = {
-            'up': '⬆️ In Alto',
-            'down': '⬇️ In Basso',
-            'left': '⬅️ A Sinistra',
-            'right': '➡️ A Destra',
-            'stop': '⏹️ Fermato'
+            'up': '⬆️ IN ALTO',
+            'down': '⬇️ IN BASSO',
+            'left': '⬅️ A SINISTRA',
+            'right': '➡️ A DESTRA',
+            'stop': '⏹️ FERMO'
         };
         if (badge) {
-            badge.innerText = dirNames[direction] ? '🔄 Rotazione ' + dirNames[direction] : '🔄 Rotazione...';
+            badge.innerHTML = `<i class="fa-solid fa-arrows-spin fa-spin me-2"></i>Rotazione ${dirNames[direction] || direction}...`;
             badge.style.display = 'block';
             if (ptzFeedbackTimer) clearTimeout(ptzFeedbackTimer);
             ptzFeedbackTimer = setTimeout(() => {
                 badge.style.display = 'none';
-            }, 1400);
+            }, 1800);
         }
 
         try {
             const res = await fetch('/api/ptz/' + direction, { method: 'POST' });
             const data = await res.json();
             if (!data.success) {
-                if (badge) badge.innerText = '⚠️ ' + data.error;
+                if (badge) {
+                    badge.innerHTML = `⚠️ ${data.error}`;
+                    badge.style.display = 'block';
+                }
             }
         } catch(e) {
             console.error('PTZ error:', e);
-            if (badge) badge.innerText = '⚠️ Errore connessione';
+            if (badge) {
+                badge.innerHTML = `⚠️ Errore di connessione`;
+                badge.style.display = 'block';
+            }
         }
     }
 

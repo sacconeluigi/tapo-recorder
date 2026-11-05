@@ -458,9 +458,17 @@ def take_snapshot():
         return jsonify({"error": str(e)}), 500
 
 
+@app.after_request
+def add_header(r):
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    r.headers["Pragma"] = "no-cache"
+    r.headers["Expires"] = "0"
+    return r
+
+
 @app.route("/api/live_stream")
 def live_stream():
-    """Genera un flusso video in diretta MJPEG compatibile con iPhone, Android e PC."""
+    """Genera un flusso video in diretta MJPEG ultra-reattivo a bassa latenza."""
     settings = load_settings()
     host = get_active_host(settings)
     port = settings.get("port", "554").strip()
@@ -475,10 +483,14 @@ def live_stream():
     cmd = [
         ffmpeg_exe,
         "-rtsp_transport", "tcp",
+        "-fflags", "nobuffer",
+        "-flags", "low_delay",
+        "-probesize", "32768",
+        "-analyzeduration", "0",
         "-i", rtsp_url,
         "-f", "image2pipe",
         "-vf", "scale=640:-1",
-        "-r", "6",
+        "-r", "8",
         "-q:v", "6",
         "-vcodec", "mjpeg",
         "-"
@@ -618,10 +630,10 @@ def send_onvif_ptz(direction):
     </s:Header>"""
 
     speed_map = {
-        "up": (0.0, 0.8),
-        "down": (0.0, -0.8),
-        "left": (-0.8, 0.0),
-        "right": (0.8, 0.0),
+        "up": (0.0, 1.0),
+        "down": (0.0, -1.0),
+        "left": (-1.0, 0.0),
+        "right": (1.0, 0.0),
     }
 
     if direction == "stop":
