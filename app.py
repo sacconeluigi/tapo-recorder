@@ -637,7 +637,7 @@ def send_onvif_ptz(direction):
           <tptz:Velocity>
             <tt:PanTilt x="{x}" y="{y}"/>
           </tptz:Velocity>
-          <tptz:Timeout>PT0.6S</tptz:Timeout>
+          <tptz:Timeout>PT1S</tptz:Timeout>
         </tptz:ContinuousMove>"""
         action = "http://www.onvif.org/ver20/ptz/wsdl/ContinuousMove"
 
